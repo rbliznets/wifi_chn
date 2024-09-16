@@ -1,0 +1,9 @@
+menu "Wifi channel"
+
+    config WIFICHN_SYNC_TIME
+        bool "Enable sync time."
+        default y
+        help
+            Установка системного времени из NTP сервера.
+                                                       
+endmenu
