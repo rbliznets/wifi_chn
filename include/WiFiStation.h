@@ -103,6 +103,12 @@ public:
 
 	/// Подключение к WiFi.
 	/*
+	* \return true - если работает, false - если нет.
+	*/
+	static inline bool isRun(){return (theSingleInstance != nullptr);}; 
+
+	/// Подключение к WiFi.
+	/*
 	* \param[in] connectCallback - Указатель на функцию обработки события подключения к WiFi.
 	* \return true - если подключение успешно, false - если не удалось подключиться.
 	*/
