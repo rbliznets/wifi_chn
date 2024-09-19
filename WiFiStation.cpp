@@ -46,7 +46,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
             if (WiFiStation::Instance()->mConnectCallback != nullptr)
                 WiFiStation::Instance()->mConnectCallback(nullptr);
         }
-        else
+        if(WiFiStation::Instance()->mConnecting)
         {
             esp_wifi_connect();
             ESP_LOGW(TAG, "connect to the AP fail");
@@ -71,7 +71,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
 
 bool WiFiStation::start(onWiFiConnect *connectCallback)
 {
-    if (mSrcIP != 0)
+    if (mConnecting)
         return false;
     mConnectCallback = connectCallback;
 
@@ -111,6 +111,7 @@ bool WiFiStation::start(onWiFiConnect *connectCallback)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &m_wifi_config));
+    mConnecting = true;
     ESP_ERROR_CHECK(esp_wifi_start());
     // ESP_LOGI(TAG, "wifi_init_sta finished.");
     return true;
@@ -119,6 +120,8 @@ bool WiFiStation::start(onWiFiConnect *connectCallback)
 bool WiFiStation::stop()
 {
     stopClient();
+    mConnecting = false;
+    vTaskDelay(pdMS_TO_TICKS(100));
     esp_wifi_stop();
     while (mSrcIP != 0)
         vTaskDelay(1);

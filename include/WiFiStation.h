@@ -69,6 +69,7 @@ protected:
 	uint32_t mDestIP = 0xffffffffL;			///< IP адрес сервера.
 	uint32_t mSrcIP = 0;					///< IP адрес устройства.
 	uint16_t mPort = 2013;					///< Порт для подключения к серверу
+	bool mConnecting = false;				///< Флаг подключения.
 	onClientDataRx *mClientDataRxCallback = nullptr; ///< Событие на прием данных от сервера.
 
 	CUDPOut *mUdpOut = nullptr;			  ///< Указатель на UDP клиент.
@@ -118,6 +119,8 @@ public:
 	* \return true - если отключение успешно, false - если не удалось отключиться.
 	*/
 	bool stop();
+	
+	inline bool isConnecting(){return mConnecting;};
 
 	/// Настройки WiFi из файла.
 	/*

@@ -73,10 +73,17 @@ void CTCPClientTask::run()
 				// TDEC("errno",errno);
 				if (errno == ENOTCONN)
 				{
+					close(m_sock);
 					if (mConnected == 1)
 						mConnected = 0;
 					break;
 				}
+				// else if(errno == EHOSTUNREACH)
+				// {
+				// 	close(m_sock);
+				// 	mConnected = 0;
+				// 	break;
+				// }
 			}
 			else
 			{
