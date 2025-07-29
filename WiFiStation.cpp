@@ -154,7 +154,8 @@ void WiFiStation::initFromFile(const char *fileName, CJsonParser *parser)
             sz = std::fread(data, 1, sz, f);
             std::fclose(f);
             data[sz] = 0;
-            int t1 = parser->parse((const char *)data);
+            int16_t crc_status;
+            int t1 = parser->parse((const char *)data,crc_status);
             if (t1 == 1)
             {
                 initFromJson(t1, parser);
