@@ -12,7 +12,6 @@
 #include "sdkconfig.h"
 #include "esp_wifi.h"
 #include <cstring>
-#include "CJsonParser.h"
 
 /// Обработчик события подключения к WiFi.
 /*
@@ -127,13 +126,13 @@ public:
 	* \param[in] fileName - имя файла.
 	* \param[in] parser - указатель на парсер.
 	*/
-	void initFromFile(const char *fileName, CJsonParser *parser);
+	// void initFromFile(const char *fileName, CJsonParser *parser);
 	/// Настройки WiFi из json.
 	/*
 	* \param[in] index - индекс token
 	* \param[in] parser - указатель на парсер.
 	*/
-	void initFromJson(int index, CJsonParser *parser);
+	// void initFromJson(int index, CJsonParser *parser);
 
 	/// Запуск клиента
 	/*

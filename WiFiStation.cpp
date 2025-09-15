@@ -134,85 +134,85 @@ bool WiFiStation::stop()
     return true;
 }
 
-void WiFiStation::initFromFile(const char *fileName, CJsonParser *parser)
-{
-    if (fileName != nullptr)
-    {
-        std::string str = "/spiffs/";
-        str += fileName;
-        FILE *f = std::fopen(str.c_str(), "r");
-        if (f == nullptr)
-        {
-            ESP_LOGW(TAG, "Failed to open file %s", fileName);
-        }
-        else
-        {
-            std::fseek(f, 0, SEEK_END);
-            int32_t sz = std::ftell(f);
-            std::fseek(f, 0, SEEK_SET);
-            uint8_t *data = new uint8_t[sz + 1];
-            sz = std::fread(data, 1, sz, f);
-            std::fclose(f);
-            data[sz] = 0;
-            int16_t crc_status;
-            int t1 = parser->parse((const char *)data,crc_status);
-            if (t1 == 1)
-            {
-                initFromJson(t1, parser);
-            }
-            delete[] data;
-        }
-    }
-}
+// void WiFiStation::initFromFile(const char *fileName, CJsonParser *parser)
+// {
+//     if (fileName != nullptr)
+//     {
+//         std::string str = "/spiffs/";
+//         str += fileName;
+//         FILE *f = std::fopen(str.c_str(), "r");
+//         if (f == nullptr)
+//         {
+//             ESP_LOGW(TAG, "Failed to open file %s", fileName);
+//         }
+//         else
+//         {
+//             std::fseek(f, 0, SEEK_END);
+//             int32_t sz = std::ftell(f);
+//             std::fseek(f, 0, SEEK_SET);
+//             uint8_t *data = new uint8_t[sz + 1];
+//             sz = std::fread(data, 1, sz, f);
+//             std::fclose(f);
+//             data[sz] = 0;
+//             int16_t crc_status;
+//             int t1 = parser->parse((const char *)data,crc_status);
+//             if (t1 == 1)
+//             {
+//                 initFromJson(t1, parser);
+//             }
+//             delete[] data;
+//         }
+//     }
+// }
 
-void WiFiStation::initFromJson(int index, CJsonParser *parser)
-{
-    std::string str;
-    if (parser->getString(index, "ssid", str))
-    {
-        std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
-    }
-    if (parser->getString(index, "password", str))
-    {
-        std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
-    }
-    int t;
-    if (parser->getObject(index, "client", t))
-    {
-        int x;
-        if (parser->getString(t, "host", str))
-        {
-            in_addr_t a = inet_addr(str.c_str());
-            if (a != INADDR_NONE)
-            {
-                mDestIP = a;
-                ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR((esp_ip4_addr_t *)&mDestIP));
-            }
-            else
-            {
-                ESP_LOGE(TAG, "wrong host %s", str.c_str());
-                return;
-            }
-        }
-        else
-        {
-            ESP_LOGE(TAG, "client.host not found");
-            return;
-        }
+// void WiFiStation::initFromJson(int index, CJsonParser *parser)
+// {
+//     std::string str;
+//     if (parser->getString(index, "ssid", str))
+//     {
+//         std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
+//     }
+//     if (parser->getString(index, "password", str))
+//     {
+//         std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
+//     }
+//     int t;
+//     if (parser->getObject(index, "client", t))
+//     {
+//         int x;
+//         if (parser->getString(t, "host", str))
+//         {
+//             in_addr_t a = inet_addr(str.c_str());
+//             if (a != INADDR_NONE)
+//             {
+//                 mDestIP = a;
+//                 ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR((esp_ip4_addr_t *)&mDestIP));
+//             }
+//             else
+//             {
+//                 ESP_LOGE(TAG, "wrong host %s", str.c_str());
+//                 return;
+//             }
+//         }
+//         else
+//         {
+//             ESP_LOGE(TAG, "client.host not found");
+//             return;
+//         }
 
-        if (parser->getInt(t, "port", x))
-        {
-            mPort = x;
-        }
-        if (parser->getString(t, "type", str))
-        {
-            if (str == "udp")
-                mClient = CLIENT_TYPE::UDP;
-            else
-                mClient = CLIENT_TYPE::TCP;
-        }
-    }
-}
+//         if (parser->getInt(t, "port", x))
+//         {
+//             mPort = x;
+//         }
+//         if (parser->getString(t, "type", str))
+//         {
+//             if (str == "udp")
+//                 mClient = CLIENT_TYPE::UDP;
+//             else
+//                 mClient = CLIENT_TYPE::TCP;
+//         }
+//     }
+// }
 
 bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
 {
