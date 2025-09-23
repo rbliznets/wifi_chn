@@ -96,7 +96,7 @@ void WiFiStation::event_ota_handler(void* arg, esp_event_base_t event_base, int3
                 ESP_LOGI(TAG, "Callback to decrypt function");
                 break;
             case ESP_HTTPS_OTA_WRITE_FLASH:
-                ESP_LOGD(TAG, "Writing to flash: %d written", *(int *)event_data);
+                ESP_LOGW(TAG, "Writing to flash: %d written", *(int *)event_data);
                 break;
             case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
                 ESP_LOGI(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
@@ -115,8 +115,8 @@ bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char* file)
 {
     mOtaProgressCallback = otaProgressCallback;
     esp_http_client_config_t cfgHTTPS;
-    // memset(&cfgHTTPS, 0, sizeof(cfgHTTPS));
-    // Ссылка на BIN-файл с обновлением
+    memset(&cfgHTTPS, 0, sizeof(cfgHTTPS));
+    // cfgHTTPS.addr_type = HTTP_ADDR_TYPE_INET;
     cfgHTTPS.url = file;
     // cfgHTTPS.skip_cert_common_name_check = true;
     // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
@@ -127,6 +127,10 @@ bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char* file)
     cfgHTTPS.buffer_size = 4096;
     esp_https_ota_config_t ota_config = {
         .http_config = &cfgHTTPS,
+        .partial_http_download = false,
+        .buffer_caps = MALLOC_CAP_SPIRAM,
+        .ota_resumption = false,
+        .ota_image_bytes_written = 64*1024
     };
 
     ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, NULL));
