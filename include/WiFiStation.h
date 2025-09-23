@@ -13,6 +13,11 @@
 #include "esp_wifi.h"
 #include <cstring>
 
+#include <fstream>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+#include <filesystem>
+
 /// Обработчик события подключения к WiFi.
 /*
  *  \param[in] ip_addr - Указатель на IP адрес после подключения, если nullptr - подключение завершено.
@@ -26,6 +31,10 @@ typedef void onWiFiConnect(uint32_t *ip_addr);
  * \param[in] size размер данных.
  */
 typedef void onClientDataRx(uint32_t addr, uint16_t port, uint8_t *data, uint16_t size);
+
+#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
+typedef void onOtaProgress(uint16_t progress, uint16_t status);
+#endif
 
 /// @brief Тип клиента
 enum class CLIENT_TYPE
@@ -61,6 +70,7 @@ protected:
 
 	/// Callback функция для обработки событий WiFi.
 	static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+
 	onWiFiConnect *mConnectCallback = nullptr; ///< Событие на подсоединение/отсоединения к WiFi.
 	esp_netif_t *m_net_if;					   ///< esp_netif_object server
 
@@ -74,6 +84,12 @@ protected:
 	CUDPOut *mUdpOut = nullptr;			  ///< Указатель на UDP клиент.
 	CUDPInTask *mUdpIn = nullptr;		  ///< Указатель на UDP сервер.
 	CTCPClientTask *mTcpClient = nullptr; ///< Указатель на TCP клиент.
+
+#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
+	static void event_ota_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+
+	onOtaProgress *mOtaProgressCallback = nullptr;
+#endif
 
 	/// Конструктор.
 	WiFiStation();
@@ -112,7 +128,7 @@ public:
 	* \param[in] connectCallback - Указатель на функцию обработки события подключения к WiFi.
 	* \return true - если подключение успешно, false - если не удалось подключиться.
 	*/
-	bool start(onWiFiConnect *connectCallback);
+	bool start(onWiFiConnect *connectCallback, char* ssid = nullptr, char* password = nullptr);
 	/// Отключение от WiFi.
 	/*
 	* \return true - если отключение успешно, false - если не удалось отключиться.
@@ -124,15 +140,10 @@ public:
 	/// Настройки WiFi из файла.
 	/*
 	* \param[in] fileName - имя файла.
-	* \param[in] parser - указатель на парсер.
 	*/
-	// void initFromFile(const char *fileName, CJsonParser *parser);
+	uint16_t initFromFile(const char *fileName);
 	/// Настройки WiFi из json.
-	/*
-	* \param[in] index - индекс token
-	* \param[in] parser - указатель на парсер.
-	*/
-	// void initFromJson(int index, CJsonParser *parser);
+	uint16_t initFromJson(json& config);
 
 	/// Запуск клиента
 	/*
@@ -149,4 +160,8 @@ public:
 	void sendData(uint8_t *data, uint16_t len);
 	/// Остановка клиента
 	void stopClient();
+
+#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
+	bool startOta(onOtaProgress *otaProgressCallback, char* file);
+#endif
 };

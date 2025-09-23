@@ -17,6 +17,9 @@
 #include "esp_sntp.h"
 #include "CDateTimeSystem.h"
 
+#include "esp_https_ota.h"
+#include "esp_crt_bundle.h"
+
 static const char *TAG = "wifi";
 
 WiFiStation *WiFiStation::theSingleInstance = nullptr;
@@ -69,13 +72,82 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
     }
 }
 
-bool WiFiStation::start(onWiFiConnect *connectCallback)
+#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
+void WiFiStation::event_ota_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if (event_base == ESP_HTTPS_OTA_EVENT) {
+        switch (event_id) {
+            case ESP_HTTPS_OTA_START:
+                ESP_LOGI(TAG, "OTA started");
+                break;
+            case ESP_HTTPS_OTA_CONNECTED:
+                ESP_LOGI(TAG, "Connected to server");
+                break;
+            case ESP_HTTPS_OTA_GET_IMG_DESC:
+                ESP_LOGI(TAG, "Reading Image Description");
+                break;
+            case ESP_HTTPS_OTA_VERIFY_CHIP_ID:
+                ESP_LOGI(TAG, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
+                break;
+            case ESP_HTTPS_OTA_VERIFY_CHIP_REVISION:
+                ESP_LOGI(TAG, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
+                break;
+            case ESP_HTTPS_OTA_DECRYPT_CB:
+                ESP_LOGI(TAG, "Callback to decrypt function");
+                break;
+            case ESP_HTTPS_OTA_WRITE_FLASH:
+                ESP_LOGD(TAG, "Writing to flash: %d written", *(int *)event_data);
+                break;
+            case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
+                ESP_LOGI(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
+                break;
+            case ESP_HTTPS_OTA_FINISH:
+                ESP_LOGI(TAG, "OTA finish");
+                break;
+            case ESP_HTTPS_OTA_ABORT:
+                ESP_LOGI(TAG, "OTA abort");
+                break;
+        }
+    }
+}
+
+bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char* file)
+{
+    mOtaProgressCallback = otaProgressCallback;
+    esp_http_client_config_t cfgHTTPS;
+    // memset(&cfgHTTPS, 0, sizeof(cfgHTTPS));
+    // Ссылка на BIN-файл с обновлением
+    cfgHTTPS.url = file;
+    // cfgHTTPS.skip_cert_common_name_check = true;
+    // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
+    cfgHTTPS.crt_bundle_attach = esp_crt_bundle_attach;
+    // Указатель на TLS-сертификат
+    cfgHTTPS.use_global_ca_store = true;
+    cfgHTTPS.buffer_size_tx = 2048;
+    cfgHTTPS.buffer_size = 4096;
+    esp_https_ota_config_t ota_config = {
+        .http_config = &cfgHTTPS,
+    };
+
+    ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, NULL));
+    esp_err_t err = esp_https_ota(&ota_config);
+    THEX("startOta",(uint32_t)err);
+    return err == ESP_OK;
+}
+#endif
+
+bool WiFiStation::start(onWiFiConnect *connectCallback, char* ssid, char* password)
 {
     if (mConnecting)
         return false;
     mConnectCallback = connectCallback;
 
-    // ESP_LOGI(TAG,"%s %s",m_wifi_config.sta.ssid, m_wifi_config.sta.password);
+    if(ssid != nullptr)
+        std::strncpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
+    if(password != nullptr)
+        std::strncpy((char *)m_wifi_config.sta.password, password, sizeof(m_wifi_config.sta.password));
+
+    ESP_LOGI(TAG,"%s %s",m_wifi_config.sta.ssid, m_wifi_config.sta.password);
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -134,85 +206,98 @@ bool WiFiStation::stop()
     return true;
 }
 
-// void WiFiStation::initFromFile(const char *fileName, CJsonParser *parser)
-// {
-//     if (fileName != nullptr)
-//     {
-//         std::string str = "/spiffs/";
-//         str += fileName;
-//         FILE *f = std::fopen(str.c_str(), "r");
-//         if (f == nullptr)
-//         {
-//             ESP_LOGW(TAG, "Failed to open file %s", fileName);
-//         }
-//         else
-//         {
-//             std::fseek(f, 0, SEEK_END);
-//             int32_t sz = std::ftell(f);
-//             std::fseek(f, 0, SEEK_SET);
-//             uint8_t *data = new uint8_t[sz + 1];
-//             sz = std::fread(data, 1, sz, f);
-//             std::fclose(f);
-//             data[sz] = 0;
-//             int16_t crc_status;
-//             int t1 = parser->parse((const char *)data,crc_status);
-//             if (t1 == 1)
-//             {
-//                 initFromJson(t1, parser);
-//             }
-//             delete[] data;
-//         }
-//     }
-// }
+uint16_t WiFiStation::initFromFile(const char *fileName)
+{
+	try
+	{
+        std::string str = "/spiffs/";
+        str += fileName;
+		std::ifstream f(str);
+		json data = json::parse(f, nullptr, true, true);
+		f.close();
+        return initFromJson(data);
+	}
+	catch (...)
+	{
+		ESP_LOGW(TAG, "Failed to open file %s or parse", fileName);
+        return 0xff;
+	}
+}
 
-// void WiFiStation::initFromJson(int index, CJsonParser *parser)
-// {
-//     std::string str;
-//     if (parser->getString(index, "ssid", str))
-//     {
-//         std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
-//     }
-//     if (parser->getString(index, "password", str))
-//     {
-//         std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
-//     }
-//     int t;
-//     if (parser->getObject(index, "client", t))
-//     {
-//         int x;
-//         if (parser->getString(t, "host", str))
-//         {
-//             in_addr_t a = inet_addr(str.c_str());
-//             if (a != INADDR_NONE)
-//             {
-//                 mDestIP = a;
-//                 ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR((esp_ip4_addr_t *)&mDestIP));
-//             }
-//             else
-//             {
-//                 ESP_LOGE(TAG, "wrong host %s", str.c_str());
-//                 return;
-//             }
-//         }
-//         else
-//         {
-//             ESP_LOGE(TAG, "client.host not found");
-//             return;
-//         }
+uint16_t WiFiStation::initFromJson(json& config)
+{
+    uint16_t res = 0;
+   	if (config.contains("ssid") && config["ssid"].is_string())
+	{
+        std::string str = config["ssid"].template get<std::string>();
+        std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
+    }
+    else
+    {
+        res |= 0x01; 
+    }
+   	if (config.contains("password") && config["password"].is_string())
+	{
+        std::string str = config["password"].template get<std::string>();
+        std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
+    }
+    else
+    {
+        res |= 0x02; 
+    }
+   	if (config.contains("client") && config["client"].is_object())
+    {
+   	    if (config["client"].contains("type") && config["client"]["type"].is_string())
+        {
+            std::string str = config["client"]["type"].template get<std::string>();
+            if (str == "udp")
+                mClient = CLIENT_TYPE::UDP;
+            else if (str == "tcp")
+                mClient = CLIENT_TYPE::TCP;
+            else
+            {
+                res |= 0x04; 
+                return res;
+            }
 
-//         if (parser->getInt(t, "port", x))
-//         {
-//             mPort = x;
-//         }
-//         if (parser->getString(t, "type", str))
-//         {
-//             if (str == "udp")
-//                 mClient = CLIENT_TYPE::UDP;
-//             else
-//                 mClient = CLIENT_TYPE::TCP;
-//         }
-//     }
-// }
+            if((mClient == CLIENT_TYPE::UDP) || (mClient == CLIENT_TYPE::TCP))
+            {
+                if (config["client"].contains("host") && config["client"]["host"].is_string())
+                {
+                    str = config["client"]["host"].template get<std::string>();
+                    in_addr_t a = inet_addr(str.c_str());
+                    if (a != INADDR_NONE)
+                    {
+                        mDestIP = a;
+                        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR((esp_ip4_addr_t *)&mDestIP));
+                    }
+                    else
+                    {
+                        ESP_LOGE(TAG, "wrong host %s", str.c_str());
+                        res |= 0x80;
+                        return res;
+                    }
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "client.host not found");
+                        res |= 0x80;
+                        return res;
+                }
+
+                if (config["client"].contains("port") && config["client"]["port"].is_number_unsigned())
+                {
+                    mPort = config["client"]["port"].template get<uint16_t>();
+                }
+                else
+                {
+                    mPort = 2000;
+                }
+            }
+        }
+    }
+    return res;
+}
 
 bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
 {
@@ -291,7 +376,7 @@ void WiFiStation::stopClient()
 #if (CONFIG_WIFICHN_SYNC_TIME == 1)
 void WiFiStation::time_sync_notification_cb(struct timeval *tv)
 {
-    // ESP_LOGI(TAG, "Notification of a time synchronization event");
+    ESP_LOGI(TAG, "Notification of a time synchronization event");
     if (!CDateTimeSystem::isSync())
         CDateTimeSystem::saveDateTime();
     esp_netif_sntp_deinit();
