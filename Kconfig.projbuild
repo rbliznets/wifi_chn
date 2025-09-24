@@ -1,9 +1,23 @@
 menu "Wifi channel"
 
     config WIFICHN_SYNC_TIME
+        depends on LWIP_SNTP_MAX_SERVERS>0
         bool "Enable sync time."
         default y
         help
             Установка системного времени из NTP сервера.
+
+    config WIFICHN_OTA
+        depends on ESP_HTTP_CLIENT_ENABLE_HTTPS
+        bool "Enable HTTPS OTA."
+        default y
+ 
+    config WIFICHN_UDP
+        bool "Enable UDP channel."
+        default n
+
+    config WIFICHN_TCP
+        bool "Enable TCP channel."
+        default n
                                                        
 endmenu

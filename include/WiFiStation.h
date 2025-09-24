@@ -23,6 +23,8 @@ using json = nlohmann::json;
  *  \param[in] ip_addr - Указатель на IP адрес после подключения, если nullptr - подключение завершено.
  */
 typedef void onWiFiConnect(uint32_t *ip_addr);
+
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 /// Функция события приема данных.
 /*!
  * \param[in] addr IP адрес.
@@ -31,6 +33,7 @@ typedef void onWiFiConnect(uint32_t *ip_addr);
  * \param[in] size размер данных.
  */
 typedef void onClientDataRx(uint32_t addr, uint16_t port, uint8_t *data, uint16_t size);
+#endif
 
 #ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
 typedef void onOtaProgress(uint16_t progress, uint16_t status);
@@ -39,18 +42,31 @@ typedef void onOtaProgress(uint16_t progress, uint16_t status);
 /// @brief Тип клиента
 enum class CLIENT_TYPE
 {
+	None,
+#if CONFIG_WIFICHN_UDP
 	UDP, ///< UDP клиент.
+#endif
+#if CONFIG_WIFICHN_TCP
 	TCP	 ///< TCP клиент.
+#endif
 };
 
+#if CONFIG_WIFICHN_UDP
 class CUDPOut;
 class CUDPInTask;
+#endif
+#if CONFIG_WIFICHN_TCP
 class CTCPClientTask;
+#endif
 
 class WiFiStation
 {
+#if CONFIG_WIFICHN_UDP
 	friend class CUDPInTask;
+#endif
+#if CONFIG_WIFICHN_TCP
 	friend class CTCPClientTask;
+#endif
 
 protected:
 	static WiFiStation *theSingleInstance; ///< Указатель на единственный экземпляр
@@ -74,16 +90,22 @@ protected:
 	onWiFiConnect *mConnectCallback = nullptr; ///< Событие на подсоединение/отсоединения к WiFi.
 	esp_netif_t *m_net_if;					   ///< esp_netif_object server
 
-	CLIENT_TYPE mClient = CLIENT_TYPE::UDP; ///< Тип клиента
-	uint32_t mDestIP = 0xffffffffL;			///< IP адрес сервера.
+	CLIENT_TYPE mClient = CLIENT_TYPE::None; ///< Тип клиента
 	uint32_t mSrcIP = 0;					///< IP адрес устройства.
-	uint16_t mPort = 2013;					///< Порт для подключения к серверу
 	bool mConnecting = false;				///< Флаг подключения.
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
+	uint32_t mDestIP = 0xffffffffL;			///< IP адрес сервера.
+	uint16_t mPort = 2013;					///< Порт для подключения к серверу
 	onClientDataRx *mClientDataRxCallback = nullptr; ///< Событие на прием данных от сервера.
+#endif
 
+#if CONFIG_WIFICHN_UDP
 	CUDPOut *mUdpOut = nullptr;			  ///< Указатель на UDP клиент.
 	CUDPInTask *mUdpIn = nullptr;		  ///< Указатель на UDP сервер.
+#endif
+#if CONFIG_WIFICHN_TCP
 	CTCPClientTask *mTcpClient = nullptr; ///< Указатель на TCP клиент.
+#endif
 
 #ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
 	static void event_ota_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
@@ -145,6 +167,7 @@ public:
 	/// Настройки WiFi из json.
 	uint16_t initFromJson(json& config);
 
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 	/// Запуск клиента
 	/*
 	* \param[in] clientDataRxCallback - Указатель на функцию обработки события приема данных от сервера.
@@ -160,6 +183,7 @@ public:
 	void sendData(uint8_t *data, uint16_t len);
 	/// Остановка клиента
 	void stopClient();
+#endif
 
 #ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
 	bool startOta(onOtaProgress *otaProgressCallback, char* file);

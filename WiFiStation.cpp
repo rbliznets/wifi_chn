@@ -9,9 +9,13 @@
 #include "WiFiStation.h"
 #include "esp_log.h"
 #include <arpa/inet.h>
+#if CONFIG_WIFICHN_UDP
 #include "tasks/CUDPOut.h"
 #include "tasks/CUDPInTask.h"
+#endif
+#if CONFIG_WIFICHN_TCP
 #include "tasks/CTCPClientTask.h"
+#endif
 #include "CTrace.h"
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
@@ -195,7 +199,9 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, char* ssid, char* passwo
 
 bool WiFiStation::stop()
 {
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
     stopClient();
+#endif
     mConnecting = false;
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_wifi_stop();
@@ -254,17 +260,27 @@ uint16_t WiFiStation::initFromJson(json& config)
    	    if (config["client"].contains("type") && config["client"]["type"].is_string())
         {
             std::string str = config["client"]["type"].template get<std::string>();
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
             if (str == "udp")
+ #if CONFIG_WIFICHN_UDP
                 mClient = CLIENT_TYPE::UDP;
+#else
+                mClient = CLIENT_TYPE::None;
+#endif
             else if (str == "tcp")
+#if CONFIG_WIFICHN_TCP
                 mClient = CLIENT_TYPE::TCP;
+#else
+                mClient = CLIENT_TYPE::None;
+#endif
             else
             {
+                mClient = CLIENT_TYPE::None;
                 res |= 0x04; 
                 return res;
             }
 
-            if((mClient == CLIENT_TYPE::UDP) || (mClient == CLIENT_TYPE::TCP))
+            if(mClient != CLIENT_TYPE::None)
             {
                 if (config["client"].contains("host") && config["client"]["host"].is_string())
                 {
@@ -298,36 +314,44 @@ uint16_t WiFiStation::initFromJson(json& config)
                     mPort = 2000;
                 }
             }
+#endif
         }
     }
     return res;
 }
 
+#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
 {
     if (mDestIP == 0xffffffffL)
         return false;
 
     mClientDataRxCallback = clientDataRxCallback;
+#if CONFIG_WIFICHN_UDP
     if (mClient == CLIENT_TYPE::UDP)
     {
         if (mUdpOut != nullptr)
             return false;
         if (mUdpIn != nullptr)
             return false;
+#if CONFIG_WIFICHN_TCP
         if (mTcpClient != nullptr)
         {
             delete mTcpClient;
             mTcpClient = nullptr;
         }
+#endif
 
         mUdpOut = new CUDPOut(this, mDestIP, mPort);
         mUdpIn = new CUDPInTask(this, mPort);
     }
-    else if(mClient == CLIENT_TYPE::TCP)
+#endif
+#if CONFIG_WIFICHN_TCP
+   if(mClient == CLIENT_TYPE::TCP)
     {
         if (mTcpClient != nullptr)
            return false;
+#if CONFIG_WIFICHN_UDP
         if (mUdpOut != nullptr)
         {
             delete mUdpOut;
@@ -338,28 +362,35 @@ bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
             delete mUdpIn;
             mUdpIn = nullptr;
         }
+#endif
 
         mTcpClient = new CTCPClientTask(this, mDestIP, mPort);
     }
+#endif
 
     return true;
 }
 
 void WiFiStation::sendData(uint8_t *data, uint16_t len)
 {
+#if CONFIG_WIFICHN_UDP
     if ((mClient == CLIENT_TYPE::UDP) && (mUdpOut != nullptr))
     {
         mUdpOut->sendData(data, len);
     }
-    else if((mClient == CLIENT_TYPE::TCP) && (mTcpClient != nullptr))
+#endif
+#if CONFIG_WIFICHN_TCP
+    if((mClient == CLIENT_TYPE::TCP) && (mTcpClient != nullptr))
     {
         mTcpClient->sendData(data, len);
     }
+#endif
 }
 
 void WiFiStation::stopClient()
 {
     // LOG("stopClient");
+#if CONFIG_WIFICHN_UDP
     if (mUdpIn != nullptr)
     {
         delete mUdpIn;
@@ -370,12 +401,16 @@ void WiFiStation::stopClient()
         delete mUdpOut;
         mUdpOut = nullptr;
     }
+#endif
+#if CONFIG_WIFICHN_TCP
     if(mTcpClient != nullptr)
     {
         delete mTcpClient;
         mTcpClient = nullptr;
     }
+#endif
 }
+#endif
 
 #if (CONFIG_WIFICHN_SYNC_TIME == 1)
 void WiFiStation::time_sync_notification_cb(struct timeval *tv)

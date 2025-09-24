@@ -10,6 +10,8 @@
 #include "CTrace.h"
 #include <cstring>
 
+#if CONFIG_WIFICHN_TCP 
+
 static const char *TAG = "tcp";
 
 CTCPClientTask::CTCPClientTask(WiFiStation *parent, uint32_t &addr, uint16_t &port) : CBaseTask(), mParent(parent)
@@ -119,3 +121,4 @@ bool CTCPClientTask::sendData(uint8_t *data, uint16_t len)
 	else
 		return true;
 }
+#endif

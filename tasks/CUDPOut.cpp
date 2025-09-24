@@ -10,6 +10,7 @@
 #include "CTrace.h"
 #include <cstring>
 
+#if CONFIG_WIFICHN_UDP
 static const char *TAG = "udpout";
 
 CUDPOut::CUDPOut(WiFiStation *parent, uint32_t &addr, uint16_t &port) : mParent(parent)
@@ -53,3 +54,4 @@ bool CUDPOut::sendData(uint8_t *data, uint16_t len)
 	else
 		return true;
 }
+#endif

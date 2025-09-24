@@ -10,6 +10,7 @@
 #include "CTrace.h"
 #include <cstring>
 
+#if CONFIG_WIFICHN_UDP
 static const char *TAG = "udpin";
 
 CUDPInTask::CUDPInTask(WiFiStation *parent, uint16_t &port) : CBaseTask(), mParent(parent)
@@ -99,3 +100,4 @@ void CUDPInTask::run()
 		// TDEC("m_sock",m_sock);
 	}
 }
+#endif
