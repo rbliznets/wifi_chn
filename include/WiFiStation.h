@@ -18,6 +18,11 @@
 using json = nlohmann::json;
 #include <filesystem>
 
+#ifdef CONFIG_WIFICHN_OTA
+#include "esp_app_desc.h"
+#endif
+
+
 /// Обработчик события подключения к WiFi.
 /*
  *  \param[in] ip_addr - Указатель на IP адрес после подключения, если nullptr - подключение завершено.
@@ -35,8 +40,9 @@ typedef void onWiFiConnect(uint32_t *ip_addr);
 typedef void onClientDataRx(uint32_t addr, uint16_t port, uint8_t *data, uint16_t size);
 #endif
 
-#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
-typedef void onOtaProgress(uint16_t progress, uint16_t status);
+#ifdef CONFIG_WIFICHN_OTA
+typedef void onOtaProgress(uint16_t progress, int16_t status);
+typedef void onOtaImageDesc(esp_app_desc_t& desc);
 #endif
 
 /// @brief Тип клиента
@@ -58,6 +64,9 @@ class CUDPInTask;
 #if CONFIG_WIFICHN_TCP
 class CTCPClientTask;
 #endif
+#if CONFIG_WIFICHN_OTA
+class COTATask;
+#endif
 
 class WiFiStation
 {
@@ -66,6 +75,9 @@ class WiFiStation
 #endif
 #if CONFIG_WIFICHN_TCP
 	friend class CTCPClientTask;
+#endif
+#if CONFIG_WIFICHN_OTA
+	friend class COTATask;
 #endif
 
 protected:
@@ -107,10 +119,11 @@ protected:
 	CTCPClientTask *mTcpClient = nullptr; ///< Указатель на TCP клиент.
 #endif
 
-#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
-	static void event_ota_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+#ifdef CONFIG_WIFICHN_OTA
+	COTATask* mOTA = nullptr;
 
 	onOtaProgress *mOtaProgressCallback = nullptr;
+	onOtaImageDesc *mOtaImageDesc = nullptr;
 #endif
 
 	/// Конструктор.
@@ -185,7 +198,9 @@ public:
 	void stopClient();
 #endif
 
-#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
-	bool startOta(onOtaProgress *otaProgressCallback, char* file);
+#ifdef CONFIG_WIFICHN_OTA
+	bool startOta(onOtaProgress *otaProgressCallback, char* file, onOtaImageDesc* otaImageDesc=nullptr);
+	bool stopOta();
+	
 #endif
 };

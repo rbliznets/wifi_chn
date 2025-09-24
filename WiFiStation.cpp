@@ -20,9 +20,9 @@
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
 #include "CDateTimeSystem.h"
-
-#include "esp_https_ota.h"
-#include "esp_crt_bundle.h"
+#ifdef CONFIG_WIFICHN_OTA
+#include "tasks/COTATask.h"
+#endif
 
 static const char *TAG = "wifi";
 
@@ -53,7 +53,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
             if (WiFiStation::Instance()->mConnectCallback != nullptr)
                 WiFiStation::Instance()->mConnectCallback(nullptr);
         }
-        if(WiFiStation::Instance()->mConnecting)
+        if (WiFiStation::Instance()->mConnecting)
         {
             esp_wifi_connect();
             ESP_LOGW(TAG, "connect to the AP fail");
@@ -76,86 +76,43 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
     }
 }
 
-#ifdef CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
-void WiFiStation::event_ota_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+#ifdef CONFIG_WIFICHN_OTA
+bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char *file, onOtaImageDesc* otaImageDesc)
 {
-    if (event_base == ESP_HTTPS_OTA_EVENT) {
-        switch (event_id) {
-            case ESP_HTTPS_OTA_START:
-                ESP_LOGI(TAG, "OTA started");
-                break;
-            case ESP_HTTPS_OTA_CONNECTED:
-                ESP_LOGI(TAG, "Connected to server");
-                break;
-            case ESP_HTTPS_OTA_GET_IMG_DESC:
-                ESP_LOGI(TAG, "Reading Image Description");
-                break;
-            case ESP_HTTPS_OTA_VERIFY_CHIP_ID:
-                ESP_LOGI(TAG, "Verifying chip id of new image: %d", *(esp_chip_id_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_VERIFY_CHIP_REVISION:
-                ESP_LOGI(TAG, "Verifying chip revision of new image: %d", *(esp_chip_id_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_DECRYPT_CB:
-                ESP_LOGI(TAG, "Callback to decrypt function");
-                break;
-            case ESP_HTTPS_OTA_WRITE_FLASH:
-                ESP_LOGW(TAG, "Writing to flash: %d written", *(int *)event_data);
-                break;
-            case ESP_HTTPS_OTA_UPDATE_BOOT_PARTITION:
-                ESP_LOGI(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
-                break;
-            case ESP_HTTPS_OTA_FINISH:
-                ESP_LOGI(TAG, "OTA finish");
-                break;
-            case ESP_HTTPS_OTA_ABORT:
-                ESP_LOGI(TAG, "OTA abort");
-                break;
-        }
+    if (mOTA == nullptr)
+    {
+        mOtaProgressCallback = otaProgressCallback;
+        mOtaImageDesc = otaImageDesc;
+        mOTA = new COTATask(this, file);
+        return true;
     }
+    return false;
 }
 
-bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char* file)
+bool WiFiStation::stopOta()
 {
-    mOtaProgressCallback = otaProgressCallback;
-    esp_http_client_config_t cfgHTTPS;
-    memset(&cfgHTTPS, 0, sizeof(cfgHTTPS));
-    // cfgHTTPS.addr_type = HTTP_ADDR_TYPE_INET;
-    cfgHTTPS.url = file;
-    // cfgHTTPS.skip_cert_common_name_check = true;
-    // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
-    cfgHTTPS.crt_bundle_attach = esp_crt_bundle_attach;
-    // Указатель на TLS-сертификат
-    cfgHTTPS.use_global_ca_store = true;
-    cfgHTTPS.buffer_size_tx = 2048;
-    cfgHTTPS.buffer_size = 4096;
-    esp_https_ota_config_t ota_config = {
-        .http_config = &cfgHTTPS,
-        .partial_http_download = false,
-        .buffer_caps = MALLOC_CAP_SPIRAM,
-        .ota_resumption = false,
-        .ota_image_bytes_written = 64*1024
-    };
-
-    ESP_ERROR_CHECK(esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, NULL));
-    esp_err_t err = esp_https_ota(&ota_config);
-    THEX("startOta",(uint32_t)err);
-    return err == ESP_OK;
+    if (mOTA != nullptr)
+    {
+        delete mOTA;
+        mOTA = nullptr;
+        return true;
+    }
+    return false;
 }
 #endif
 
-bool WiFiStation::start(onWiFiConnect *connectCallback, char* ssid, char* password)
+bool WiFiStation::start(onWiFiConnect *connectCallback, char *ssid, char *password)
 {
     if (mConnecting)
         return false;
     mConnectCallback = connectCallback;
 
-    if(ssid != nullptr)
+    if (ssid != nullptr)
         std::strncpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
-    if(password != nullptr)
+    if (password != nullptr)
         std::strncpy((char *)m_wifi_config.sta.password, password, sizeof(m_wifi_config.sta.password));
 
-    ESP_LOGI(TAG,"%s %s",m_wifi_config.sta.ssid, m_wifi_config.sta.password);
+    ESP_LOGI(TAG, "%s %s", m_wifi_config.sta.ssid, m_wifi_config.sta.password);
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -218,51 +175,51 @@ bool WiFiStation::stop()
 
 uint16_t WiFiStation::initFromFile(const char *fileName)
 {
-	try
-	{
+    try
+    {
         std::string str = "/spiffs/";
         str += fileName;
-		std::ifstream f(str);
-		json data = json::parse(f, nullptr, true, true);
-		f.close();
+        std::ifstream f(str);
+        json data = json::parse(f, nullptr, true, true);
+        f.close();
         return initFromJson(data);
-	}
-	catch (...)
-	{
-		ESP_LOGW(TAG, "Failed to open file %s or parse", fileName);
+    }
+    catch (...)
+    {
+        ESP_LOGW(TAG, "Failed to open file %s or parse", fileName);
         return 0xff;
-	}
+    }
 }
 
-uint16_t WiFiStation::initFromJson(json& config)
+uint16_t WiFiStation::initFromJson(json &config)
 {
     uint16_t res = 0;
-   	if (config.contains("ssid") && config["ssid"].is_string())
-	{
+    if (config.contains("ssid") && config["ssid"].is_string())
+    {
         std::string str = config["ssid"].template get<std::string>();
         std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
     }
     else
     {
-        res |= 0x01; 
+        res |= 0x01;
     }
-   	if (config.contains("password") && config["password"].is_string())
-	{
+    if (config.contains("password") && config["password"].is_string())
+    {
         std::string str = config["password"].template get<std::string>();
         std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
     }
     else
     {
-        res |= 0x02; 
+        res |= 0x02;
     }
-   	if (config.contains("client") && config["client"].is_object())
+    if (config.contains("client") && config["client"].is_object())
     {
-   	    if (config["client"].contains("type") && config["client"]["type"].is_string())
+        if (config["client"].contains("type") && config["client"]["type"].is_string())
         {
             std::string str = config["client"]["type"].template get<std::string>();
 #if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
             if (str == "udp")
- #if CONFIG_WIFICHN_UDP
+#if CONFIG_WIFICHN_UDP
                 mClient = CLIENT_TYPE::UDP;
 #else
                 mClient = CLIENT_TYPE::None;
@@ -276,11 +233,11 @@ uint16_t WiFiStation::initFromJson(json& config)
             else
             {
                 mClient = CLIENT_TYPE::None;
-                res |= 0x04; 
+                res |= 0x04;
                 return res;
             }
 
-            if(mClient != CLIENT_TYPE::None)
+            if (mClient != CLIENT_TYPE::None)
             {
                 if (config["client"].contains("host") && config["client"]["host"].is_string())
                 {
@@ -301,8 +258,8 @@ uint16_t WiFiStation::initFromJson(json& config)
                 else
                 {
                     ESP_LOGE(TAG, "client.host not found");
-                        res |= 0x80;
-                        return res;
+                    res |= 0x80;
+                    return res;
                 }
 
                 if (config["client"].contains("port") && config["client"]["port"].is_number_unsigned())
@@ -347,10 +304,10 @@ bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
     }
 #endif
 #if CONFIG_WIFICHN_TCP
-   if(mClient == CLIENT_TYPE::TCP)
+    if (mClient == CLIENT_TYPE::TCP)
     {
         if (mTcpClient != nullptr)
-           return false;
+            return false;
 #if CONFIG_WIFICHN_UDP
         if (mUdpOut != nullptr)
         {
@@ -380,7 +337,7 @@ void WiFiStation::sendData(uint8_t *data, uint16_t len)
     }
 #endif
 #if CONFIG_WIFICHN_TCP
-    if((mClient == CLIENT_TYPE::TCP) && (mTcpClient != nullptr))
+    if ((mClient == CLIENT_TYPE::TCP) && (mTcpClient != nullptr))
     {
         mTcpClient->sendData(data, len);
     }
@@ -403,7 +360,7 @@ void WiFiStation::stopClient()
     }
 #endif
 #if CONFIG_WIFICHN_TCP
-    if(mTcpClient != nullptr)
+    if (mTcpClient != nullptr)
     {
         delete mTcpClient;
         mTcpClient = nullptr;
