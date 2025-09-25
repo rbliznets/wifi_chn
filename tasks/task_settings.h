@@ -12,6 +12,12 @@
 
 #include "sdkconfig.h"
 
+#ifdef CONFIG_WIFICHN_TASK0
+#define CPU_CORE (0)
+#else
+#define CPU_CORE (1)
+#endif
+
 /// Макрос используется для вычисления количества элементов в массиве. Он принимает массив «x» в качестве входных данных и делит общий размер массива на размер его первого элемента. Это дает количество элементов в массиве.
 #define countof(x) (sizeof(x) / sizeof(x[0]))
 
@@ -34,16 +40,16 @@
 #define UDPINTASK_STACKSIZE (2 * 1024) ///< Размер стека задачи.
 #define UDPINTASK_PRIOR (2)			   ///< Приоритет задачи.
 #define UDPINTASK_LENGTH (1)		   ///< Длина приемной очереди задачи.
-#define UDPINTASK_CPU (0)			   ///< Номер ядра процессора.
+#define UDPINTASK_CPU CPU_CORE			   ///< Номер ядра процессора.
 
 #define TCPCLIENTTASK_NAME "tcp"		   ///< Имя задачи для отладки.
 #define TCPCLIENTTASK_STACKSIZE (2 * 1024) ///< Размер стека задачи.
 #define TCPCLIENTTASK_PRIOR (2)			   ///< Приоритет задачи.
 #define TCPCLIENTTASK_LENGTH (1)		   ///< Длина приемной очереди задачи.
-#define TCPCLIENTTASK_CPU (0)			   ///< Номер ядра процессора.
+#define TCPCLIENTTASK_CPU CPU_CORE			   ///< Номер ядра процессора.
 
 #define OTATASK_NAME "ota"				   ///< Имя задачи для отладки.
 #define OTATASK_STACKSIZE (4 * 1024 + 512) ///< Размер стека задачи.
 #define OTATASK_PRIOR (1)				   ///< Приоритет задачи.
 #define OTATASK_LENGTH (1)				   ///< Длина приемной очереди задачи.
-#define OTATASK_CPU (1)					   ///< Номер ядра процессора.
+#define OTATASK_CPU CPU_CORE					   ///< Номер ядра процессора.

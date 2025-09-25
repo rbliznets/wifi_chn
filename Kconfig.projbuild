@@ -7,6 +7,18 @@ menu "Wifi channel"
         help
             Установка системного времени из NTP сервера.
 
+    choice
+        prompt "Choose core for the wifi tasks"
+        default WIFICHN_TASK1
+
+        config WIFICHN_TASK0
+            bool "core 0"
+
+        config WIFICHN_TASK1
+            bool "core 1"
+
+    endchoice
+
     config WIFICHN_OTA
         depends on ESP_HTTP_CLIENT_ENABLE_HTTPS
         bool "Enable HTTPS OTA."
