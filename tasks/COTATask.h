@@ -30,7 +30,7 @@ protected:
 	virtual void run() override;
 
 public:
-	COTATask(WiFiStation *parent, char *file);
+	COTATask(WiFiStation *parent, const char *file);
 	/// Деструктор.
 	virtual ~COTATask();
 
