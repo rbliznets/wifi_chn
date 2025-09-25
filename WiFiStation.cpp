@@ -77,7 +77,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
 }
 
 #ifdef CONFIG_WIFICHN_OTA
-bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, char *file, onOtaImageDesc* otaImageDesc)
+bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, const char *file, onOtaImageDesc* otaImageDesc)
 {
     if (mOTA == nullptr)
     {
@@ -101,7 +101,7 @@ bool WiFiStation::stopOta()
 }
 #endif
 
-bool WiFiStation::start(onWiFiConnect *connectCallback, char *ssid, char *password)
+bool WiFiStation::start(onWiFiConnect *connectCallback, const char *ssid, const char *password)
 {
     if (mConnecting)
         return false;

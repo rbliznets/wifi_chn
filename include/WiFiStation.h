@@ -163,7 +163,7 @@ public:
 	* \param[in] connectCallback - Указатель на функцию обработки события подключения к WiFi.
 	* \return true - если подключение успешно, false - если не удалось подключиться.
 	*/
-	bool start(onWiFiConnect *connectCallback, char* ssid = nullptr, char* password = nullptr);
+	bool start(onWiFiConnect *connectCallback, const char* ssid = nullptr, const char* password = nullptr);
 	/// Отключение от WiFi.
 	/*
 	* \return true - если отключение успешно, false - если не удалось отключиться.
@@ -199,7 +199,7 @@ public:
 #endif
 
 #ifdef CONFIG_WIFICHN_OTA
-	bool startOta(onOtaProgress *otaProgressCallback, char* file, onOtaImageDesc* otaImageDesc=nullptr);
+	bool startOta(onOtaProgress *otaProgressCallback, const char* file, onOtaImageDesc* otaImageDesc=nullptr);
 	bool stopOta();
 	
 #endif
