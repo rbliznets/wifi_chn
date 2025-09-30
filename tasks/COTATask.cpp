@@ -11,6 +11,7 @@
 #include "esp_https_ota.h"
 #include "esp_crt_bundle.h"
 #include <cstring>
+#include "esp_pm.h"
 
 #if CONFIG_WIFICHN_OTA
 static const char *TAG = "ota";
@@ -87,6 +88,11 @@ void COTATask::run()
 {
 #ifndef CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
     UBaseType_t m1 = uxTaskGetStackHighWaterMark2(nullptr);
+#endif
+#if CONFIG_PM_ENABLE
+	esp_pm_lock_handle_t mPMLock; ///< флаг запрета на понижение частоты CPU
+	esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "ota", &mPMLock);
+	esp_pm_lock_acquire(mPMLock);
 #endif
 
     esp_http_client_config_t cfgHTTPS;
@@ -191,6 +197,10 @@ void COTATask::run()
     {
         mParent->mOtaProgressCallback(100, res);
     }
+#if CONFIG_PM_ENABLE
+	esp_pm_lock_release(mPMLock);
+	esp_pm_lock_delete(mPMLock);
+#endif
 
 #ifndef CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
     UBaseType_t m2 = uxTaskGetStackHighWaterMark2(nullptr);
