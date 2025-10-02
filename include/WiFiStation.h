@@ -29,6 +29,8 @@ using json = nlohmann::json;
  */
 typedef void onWiFiConnect(uint32_t *ip_addr);
 
+typedef void onWiFiEvent(uint16_t id, const char* message);
+
 #if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 /// Функция события приема данных.
 /*!
@@ -100,6 +102,7 @@ protected:
 	static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
 	onWiFiConnect *mConnectCallback = nullptr; ///< Событие на подсоединение/отсоединения к WiFi.
+	onWiFiEvent *mEventCallback = nullptr;
 	esp_netif_t *m_net_if;					   ///< esp_netif_object server
 
 	CLIENT_TYPE mClient = CLIENT_TYPE::None; ///< Тип клиента
@@ -163,7 +166,7 @@ public:
 	* \param[in] connectCallback - Указатель на функцию обработки события подключения к WiFi.
 	* \return true - если подключение успешно, false - если не удалось подключиться.
 	*/
-	bool start(onWiFiConnect *connectCallback, const char* ssid = nullptr, const char* password = nullptr);
+	bool start(onWiFiConnect *connectCallback, onWiFiEvent* eventCallback = nullptr, const char* ssid = nullptr, const char* password = nullptr);
 	/// Отключение от WiFi.
 	/*
 	* \return true - если отключение успешно, false - если не удалось отключиться.

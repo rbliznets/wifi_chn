@@ -53,10 +53,13 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
             if (WiFiStation::Instance()->mConnectCallback != nullptr)
                 WiFiStation::Instance()->mConnectCallback(nullptr);
         }
-        if (WiFiStation::Instance()->mConnecting)
+        else if (WiFiStation::Instance()->mConnecting)
         {
             esp_wifi_connect();
-            ESP_LOGW(TAG, "connect to the AP fail");
+            if (WiFiStation::Instance()->mEventCallback != nullptr)
+                WiFiStation::Instance()->mEventCallback(event_id, "connecting was failed");
+            else
+                ESP_LOGW(TAG, "connecting was failed");
         }
     }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
@@ -77,7 +80,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
 }
 
 #ifdef CONFIG_WIFICHN_OTA
-bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, const char *file, onOtaImageDesc* otaImageDesc)
+bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, const char *file, onOtaImageDesc *otaImageDesc)
 {
     if (mOTA == nullptr)
     {
@@ -97,15 +100,18 @@ bool WiFiStation::stopOta()
         mOTA = nullptr;
         return true;
     }
+    else if (mConnecting)
+    {
+        mSrcIP = 1;
+    }
     return false;
 }
 #endif
 
-bool WiFiStation::start(onWiFiConnect *connectCallback, const char *ssid, const char *password)
+bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallback, const char *ssid, const char *password)
 {
-    if (mConnecting)
-        return false;
     mConnectCallback = connectCallback;
+    mEventCallback = eventCallback;
 
     if (ssid != nullptr)
         std::strncpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
