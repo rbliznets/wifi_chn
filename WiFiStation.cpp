@@ -45,6 +45,24 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
     {
         esp_wifi_connect();
     }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
+    {
+        uint16_t ap_count = 0;
+        wifi_ap_record_t *ap_list = nullptr;
+        ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count)); // Get number of APs found
+
+        if (ap_count > 0)
+        {
+#ifdef CONFIG_SPIRAM
+            ap_list = (wifi_ap_record_t *)heap_caps_malloc(sizeof(wifi_ap_record_t) * ap_count, MALLOC_CAP_SPIRAM);
+#else
+            ap_list = (wifi_ap_record_t *)heap_caps_malloc(sizeof(wifi_ap_record_t) * ap_count, MALLOC_CAP_DEFAULT);
+#endif                                                                         // CONFIG_SPIRAM
+            ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list)); // Get AP records
+        }
+        if (WiFiStation::Instance()->mWiFiScanCallback != nullptr)
+            WiFiStation::Instance()->mWiFiScanCallback(ap_list, ap_count);
+    }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
         if (WiFiStation::Instance()->mSrcIP != 0)
@@ -139,18 +157,16 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
     m_net_if = esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &event_handler,
                                                         nullptr,
-                                                        &instance_any_id));
+                                                        nullptr));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
                                                         IP_EVENT_STA_GOT_IP,
                                                         &event_handler,
                                                         nullptr,
-                                                        &instance_got_ip));
+                                                        nullptr));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &m_wifi_config));
@@ -160,22 +176,59 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
     return true;
 }
 
+bool WiFiStation::startScan(onWiFiScan *scanCallback)
+{
+    mWiFiScanCallback = scanCallback;
+
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        WIFI_EVENT_SCAN_DONE,
+                                                        &event_handler,
+                                                        nullptr,
+                                                        nullptr));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL,        // Scan for all SSIDs
+        .bssid = NULL,       // Scan for all BSSIDs
+        .channel = 0,        // Scan all channels (0)
+        .show_hidden = false // Show hidden SSIDs
+    };
+
+    ESP_LOGI(TAG, "Starting Wi-Fi scan...");
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, false));
+    return true;
+}
+
 bool WiFiStation::stop()
 {
+    if (mConnecting)
+    {
 #if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-    stopClient();
+        stopClient();
 #endif
-    mConnecting = false;
-    vTaskDelay(pdMS_TO_TICKS(100));
-    esp_wifi_stop();
-    while (mSrcIP != 0)
-        vTaskDelay(1);
-    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
-    esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
-    esp_wifi_deinit();
-    esp_netif_destroy_default_wifi(m_net_if);
-    esp_event_loop_delete_default();
-    esp_netif_deinit();
+        mConnecting = false;
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_wifi_stop();
+        while (mSrcIP != 0)
+            vTaskDelay(1);
+        esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
+        esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
+        esp_wifi_deinit();
+        esp_netif_destroy_default_wifi(m_net_if);
+        esp_event_loop_delete_default();
+        esp_netif_deinit();
+    }
+    else
+    {
+        esp_wifi_stop();
+        esp_wifi_deinit();
+        esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_SCAN_DONE, &event_handler);
+        esp_event_loop_delete_default();
+    }
     return true;
 }
 

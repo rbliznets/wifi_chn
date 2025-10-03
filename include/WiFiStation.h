@@ -31,6 +31,9 @@ typedef void onWiFiConnect(uint32_t *ip_addr);
 
 typedef void onWiFiEvent(uint16_t id, const char* message);
 
+typedef void onWiFiScan(wifi_ap_record_t *ap_list, uint16_t ap_count);
+
+
 #if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 /// Функция события приема данных.
 /*!
@@ -103,6 +106,7 @@ protected:
 
 	onWiFiConnect *mConnectCallback = nullptr; ///< Событие на подсоединение/отсоединения к WiFi.
 	onWiFiEvent *mEventCallback = nullptr;
+	onWiFiScan* mWiFiScanCallback = nullptr;
 	esp_netif_t *m_net_if;					   ///< esp_netif_object server
 
 	CLIENT_TYPE mClient = CLIENT_TYPE::None; ///< Тип клиента
@@ -167,6 +171,9 @@ public:
 	* \return true - если подключение успешно, false - если не удалось подключиться.
 	*/
 	bool start(onWiFiConnect *connectCallback, onWiFiEvent* eventCallback = nullptr, const char* ssid = nullptr, const char* password = nullptr);
+
+	bool startScan(onWiFiScan *scanCallback);
+
 	/// Отключение от WiFi.
 	/*
 	* \return true - если отключение успешно, false - если не удалось отключиться.
