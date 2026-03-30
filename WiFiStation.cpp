@@ -130,11 +130,12 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
 {
     mConnectCallback = connectCallback;
     mEventCallback = eventCallback;
-
     if (ssid != nullptr)
-        std::strncpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
+        strlcpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
+        // std::strncpy((char *)m_wifi_config.sta.ssid, ssid, sizeof(m_wifi_config.sta.ssid));
     if (password != nullptr)
-        std::strncpy((char *)m_wifi_config.sta.password, password, sizeof(m_wifi_config.sta.password));
+        strlcpy((char *)m_wifi_config.sta.password, password, sizeof(m_wifi_config.sta.password));
+        // std::strncpy((char *)m_wifi_config.sta.password, password, sizeof(m_wifi_config.sta.password));
 
     ESP_LOGI(TAG, "%s %s", m_wifi_config.sta.ssid, m_wifi_config.sta.password);
 
@@ -256,7 +257,7 @@ uint16_t WiFiStation::initFromJson(json &config)
     if (config.contains("ssid") && config["ssid"].is_string())
     {
         std::string str = config["ssid"].template get<std::string>();
-        std::strncpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
+        strlcpy((char *)m_wifi_config.sta.ssid, str.c_str(), sizeof(m_wifi_config.sta.ssid));
     }
     else
     {
@@ -265,7 +266,7 @@ uint16_t WiFiStation::initFromJson(json &config)
     if (config.contains("password") && config["password"].is_string())
     {
         std::string str = config["password"].template get<std::string>();
-        std::strncpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
+        strlcpy((char *)m_wifi_config.sta.password, str.c_str(), sizeof(m_wifi_config.sta.password));
     }
     else
     {
