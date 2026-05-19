@@ -62,6 +62,8 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
         }
         if (WiFiStation::Instance()->mWiFiScanCallback != nullptr)
             WiFiStation::Instance()->mWiFiScanCallback(ap_list, ap_count);
+        if (ap_list != nullptr)
+            heap_caps_free(ap_list);
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
