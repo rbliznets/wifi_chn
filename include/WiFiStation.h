@@ -112,6 +112,7 @@ protected:
 	CLIENT_TYPE mClient = CLIENT_TYPE::None; ///< Тип клиента
 	uint32_t mSrcIP = 0;					///< IP адрес устройства.
 	bool mConnecting = false;				///< Флаг подключения.
+	bool mStopping = false;					///< Флаг остановки — блокирует event_handler от вызова esp_wifi_connect().
 #if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
 	uint32_t mDestIP = 0xffffffffL;			///< IP адрес сервера.
 	uint16_t mPort = 2013;					///< Порт для подключения к серверу
@@ -154,7 +155,6 @@ public:
 	{
 		if (theSingleInstance != nullptr)
 		{
-			theSingleInstance->stop();
 			delete theSingleInstance;
 			theSingleInstance = nullptr;
 		}

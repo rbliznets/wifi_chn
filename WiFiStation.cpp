@@ -43,7 +43,9 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
-        esp_wifi_connect();
+        // Не вызываем esp_wifi_connect(), если идёт остановка
+        if (!WiFiStation::Instance()->mStopping)
+            esp_wifi_connect();
     }
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
     {
@@ -73,7 +75,7 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
             if (WiFiStation::Instance()->mConnectCallback != nullptr)
                 WiFiStation::Instance()->mConnectCallback(nullptr);
         }
-        else if (WiFiStation::Instance()->mConnecting)
+        else if (WiFiStation::Instance()->mConnecting && !WiFiStation::Instance()->mStopping)
         {
             esp_wifi_connect();
             if (WiFiStation::Instance()->mEventCallback != nullptr)
@@ -214,16 +216,31 @@ bool WiFiStation::stop()
         stopClient();
 #endif
         mConnecting = false;
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_wifi_stop();
-        while (mSrcIP != 0)
-            vTaskDelay(1);
+        mStopping = true; // Блокируем event_handler от вызова esp_wifi_connect()
+
+        // Принудительно разрываем соединение, чтобы остановить внутренний retry ESP-IDF
+        esp_wifi_disconnect();
+
+        // Отключаем обработчики ДО остановки WiFi,
+        // чтобы предотвратить повторный вызов esp_wifi_connect()
         esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
         esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
+
+        // Сбрасываем внутреннее состояние reconnect в ESP-IDF
+        esp_wifi_restore();
+
+        // Безопасно останавливаем WiFi
+        esp_wifi_stop();
+
+        while (mSrcIP != 0)
+            vTaskDelay(1);
+
         esp_wifi_deinit();
         esp_netif_destroy_default_wifi(m_net_if);
         esp_event_loop_delete_default();
         esp_netif_deinit();
+
+        mStopping = false;
     }
     else
     {
