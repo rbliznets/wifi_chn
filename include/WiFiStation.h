@@ -154,6 +154,7 @@ public:
 	{
 		if (theSingleInstance != nullptr)
 		{
+			theSingleInstance->stop();
 			delete theSingleInstance;
 			theSingleInstance = nullptr;
 		}
