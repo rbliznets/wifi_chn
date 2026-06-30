@@ -109,7 +109,9 @@ void COTATask::run()
     esp_https_ota_config_t ota_config = {
         .http_config = &cfgHTTPS,
         .http_client_init_cb = nullptr,
+#if CONFIG_ESP_HTTPS_OTA_ENABLE_PARTIAL_DOWNLOAD
         .partial_http_download = false,
+#endif
 #if CONFIG_SPIRAM
         .buffer_caps = MALLOC_CAP_SPIRAM,
 #else
