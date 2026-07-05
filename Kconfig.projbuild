@@ -1,4 +1,4 @@
-menu "Wifi channel"
+menu "Wifi Module"
 
     config WIFICHN_SYNC_TIME
         depends on LWIP_SNTP_MAX_SERVERS>0

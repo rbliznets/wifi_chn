@@ -87,6 +87,15 @@ void COTATask::event_ota_handler(void *arg, esp_event_base_t event_base, int32_t
 
 void COTATask::run()
 {
+    // Временная диагностика TLS-рукопожатия при OTA.
+    esp_log_level_set("esp-tls", ESP_LOG_DEBUG);
+    esp_log_level_set("esp-tls-mbedtls", ESP_LOG_DEBUG);
+    esp_log_level_set("esp_https_ota", ESP_LOG_DEBUG);
+    esp_log_level_set("esp-x509-crt-bundle", ESP_LOG_DEBUG);
+    esp_log_level_set("HTTP_CLIENT", ESP_LOG_DEBUG);
+    esp_log_level_set("transport_base", ESP_LOG_DEBUG);
+    esp_log_level_set("transport", ESP_LOG_DEBUG);
+
 #ifndef CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
     UBaseType_t m1 = uxTaskGetStackHighWaterMark2(nullptr);
 #endif
@@ -103,10 +112,9 @@ void COTATask::run()
     // cfgHTTPS.skip_cert_common_name_check = true;
     // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
     cfgHTTPS.crt_bundle_attach = esp_crt_bundle_attach;
-    // Указатель на TLS-сертификат
-    cfgHTTPS.use_global_ca_store = true;
     cfgHTTPS.buffer_size_tx = 2048;
     cfgHTTPS.buffer_size = 4096;
+    cfgHTTPS.timeout_ms = 10000;
     esp_https_ota_config_t ota_config = {
         .http_config = &cfgHTTPS,
         .http_client_init_cb = nullptr,
@@ -119,11 +127,6 @@ void COTATask::run()
         .buffer_caps = MALLOC_CAP_DEFAULT,
 #endif
         .ota_resumption = false,
-#if CONFIG_SPIRAM
-        .ota_image_bytes_written = 64 * 1024
-#else
-        .ota_image_bytes_written = 8 * 1024
-#endif
     };
 
     if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
