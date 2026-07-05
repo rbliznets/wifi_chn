@@ -12,6 +12,7 @@
 #include "esp_crt_bundle.h"
 #include <cstring>
 #include "esp_pm.h"
+#include "CDateTimeSystem.h"
 
 #if CONFIG_WIFICHN_OTA
 static const char *TAG = "ota";
@@ -125,7 +126,20 @@ void COTATask::run()
 #endif
     };
 
+    if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
+    {
+        // Проверка TLS-сертификата сервера требует верного системного времени,
+        // поэтому ждём завершения NTP-синхронизации по WiFi (WiFiStation::mStartSyncTime),
+        // запущенной при подключении, прежде чем начинать HTTPS OTA.
+        ESP_LOGI(TAG, "Waiting for time sync before HTTPS OTA");
+        while (mParent->mStartSyncTime && !mCancel)
+            vTaskDelay(pdMS_TO_TICKS(200));
+    }
+
     int16_t res = 0;
+    if (mCancel)
+        res = 100;
+    else
     while (true)
     {
         if (ESP_OK != esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, this))
@@ -135,8 +149,10 @@ void COTATask::run()
         }
 
         esp_https_ota_handle_t https_ota_handle;
-        if (ESP_OK != esp_https_ota_begin(&ota_config, &https_ota_handle))
+        esp_err_t begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+        if (ESP_OK != begin_err)
         {
+            ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(begin_err));
             res = 102;
             break;
         }
