@@ -8,14 +8,6 @@
 
 #include "WiFiStation.h"
 #include "esp_log.h"
-#include <arpa/inet.h>
-#if CONFIG_WIFICHN_UDP
-#include "tasks/CUDPOut.h"
-#include "tasks/CUDPInTask.h"
-#endif
-#if CONFIG_WIFICHN_TCP
-#include "tasks/CTCPClientTask.h"
-#endif
 #include "CTrace.h"
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
@@ -212,19 +204,14 @@ bool WiFiStation::stop()
 {
     if (mConnecting)
     {
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-        stopClient();
-#endif
         mConnecting = false;
         mStopping = true; // Блокируем event_handler от вызова esp_wifi_connect()
 
-        // Принудительно разрываем соединение, чтобы остановить внутренний retry ESP-IDF
+        // Принудительно разрываем соединение, чтобы остановить внутренний retry ESP-IDF.
+        // Повторный esp_wifi_connect() из event_handler уже заблокирован флагом mStopping,
+        // поэтому обработчики можно не отключать заранее — иначе некому будет сбросить mSrcIP
+        // по событию WIFI_EVENT_STA_DISCONNECTED и цикл ожидания ниже зависнет навсегда.
         esp_wifi_disconnect();
-
-        // Отключаем обработчики ДО остановки WiFi,
-        // чтобы предотвратить повторный вызов esp_wifi_connect()
-        esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
-        esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
 
         // Сбрасываем внутреннее состояние reconnect в ESP-IDF
         esp_wifi_restore();
@@ -234,6 +221,10 @@ bool WiFiStation::stop()
 
         while (mSrcIP != 0)
             vTaskDelay(1);
+
+        // Отключаем обработчики после того, как соединение гарантированно разорвано
+        esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
+        esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
 
         esp_wifi_deinit();
         esp_netif_destroy_default_wifi(m_net_if);
@@ -291,162 +282,8 @@ uint16_t WiFiStation::initFromJson(json &config)
     {
         res |= 0x02;
     }
-    if (config.contains("client") && config["client"].is_object())
-    {
-        if (config["client"].contains("type") && config["client"]["type"].is_string())
-        {
-            std::string str = config["client"]["type"].template get<std::string>();
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-            if (str == "udp")
-#if CONFIG_WIFICHN_UDP
-                mClient = CLIENT_TYPE::UDP;
-#else
-                mClient = CLIENT_TYPE::None;
-#endif
-            else if (str == "tcp")
-#if CONFIG_WIFICHN_TCP
-                mClient = CLIENT_TYPE::TCP;
-#else
-                mClient = CLIENT_TYPE::None;
-#endif
-            else
-            {
-                mClient = CLIENT_TYPE::None;
-                res |= 0x04;
-                return res;
-            }
-
-            if (mClient != CLIENT_TYPE::None)
-            {
-                if (config["client"].contains("host") && config["client"]["host"].is_string())
-                {
-                    str = config["client"]["host"].template get<std::string>();
-                    in_addr_t a = inet_addr(str.c_str());
-                    if (a != INADDR_NONE)
-                    {
-                        mDestIP = a;
-                        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR((esp_ip4_addr_t *)&mDestIP));
-                    }
-                    else
-                    {
-                        ESP_LOGE(TAG, "wrong host %s", str.c_str());
-                        res |= 0x80;
-                        return res;
-                    }
-                }
-                else
-                {
-                    ESP_LOGE(TAG, "client.host not found");
-                    res |= 0x80;
-                    return res;
-                }
-
-                if (config["client"].contains("port") && config["client"]["port"].is_number_unsigned())
-                {
-                    mPort = config["client"]["port"].template get<uint16_t>();
-                }
-                else
-                {
-                    mPort = 2000;
-                }
-            }
-#endif
-        }
-    }
     return res;
 }
-
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-bool WiFiStation::startClient(onClientDataRx *clientDataRxCallback)
-{
-    if (mDestIP == 0xffffffffL)
-        return false;
-
-    mClientDataRxCallback = clientDataRxCallback;
-#if CONFIG_WIFICHN_UDP
-    if (mClient == CLIENT_TYPE::UDP)
-    {
-        if (mUdpOut != nullptr)
-            return false;
-        if (mUdpIn != nullptr)
-            return false;
-#if CONFIG_WIFICHN_TCP
-        if (mTcpClient != nullptr)
-        {
-            delete mTcpClient;
-            mTcpClient = nullptr;
-        }
-#endif
-
-        mUdpOut = new CUDPOut(this, mDestIP, mPort);
-        mUdpIn = new CUDPInTask(this, mPort);
-    }
-#endif
-#if CONFIG_WIFICHN_TCP
-    if (mClient == CLIENT_TYPE::TCP)
-    {
-        if (mTcpClient != nullptr)
-            return false;
-#if CONFIG_WIFICHN_UDP
-        if (mUdpOut != nullptr)
-        {
-            delete mUdpOut;
-            mUdpOut = nullptr;
-        }
-        if (mUdpIn != nullptr)
-        {
-            delete mUdpIn;
-            mUdpIn = nullptr;
-        }
-#endif
-
-        mTcpClient = new CTCPClientTask(this, mDestIP, mPort);
-    }
-#endif
-
-    return true;
-}
-
-void WiFiStation::sendData(uint8_t *data, uint16_t len)
-{
-#if CONFIG_WIFICHN_UDP
-    if ((mClient == CLIENT_TYPE::UDP) && (mUdpOut != nullptr))
-    {
-        mUdpOut->sendData(data, len);
-    }
-#endif
-#if CONFIG_WIFICHN_TCP
-    if ((mClient == CLIENT_TYPE::TCP) && (mTcpClient != nullptr))
-    {
-        mTcpClient->sendData(data, len);
-    }
-#endif
-}
-
-void WiFiStation::stopClient()
-{
-    // LOG("stopClient");
-#if CONFIG_WIFICHN_UDP
-    if (mUdpIn != nullptr)
-    {
-        delete mUdpIn;
-        mUdpIn = nullptr;
-    }
-    if (mUdpOut != nullptr)
-    {
-        delete mUdpOut;
-        mUdpOut = nullptr;
-    }
-#endif
-#if CONFIG_WIFICHN_TCP
-    if (mTcpClient != nullptr)
-    {
-        delete mTcpClient;
-        mTcpClient = nullptr;
-    }
-#endif
-}
-#endif
 
 #if (CONFIG_WIFICHN_SYNC_TIME == 1)
 void WiFiStation::time_sync_notification_cb(struct timeval *tv)

@@ -23,13 +23,5 @@ menu "Wifi channel"
         depends on ESP_HTTP_CLIENT_ENABLE_HTTPS
         bool "Enable HTTPS OTA."
         default y
- 
-    config WIFICHN_UDP
-        bool "Enable UDP channel."
-        default n
 
-    config WIFICHN_TCP
-        bool "Enable TCP channel."
-        default n
-                                                       
 endmenu

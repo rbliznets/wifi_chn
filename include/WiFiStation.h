@@ -33,54 +33,17 @@ typedef void onWiFiEvent(uint16_t id, const char* message);
 
 typedef void onWiFiScan(wifi_ap_record_t *ap_list, uint16_t ap_count);
 
-
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-/// Функция события приема данных.
-/*!
- * \param[in] addr IP адрес.
- * \param[in] port Порт.
- * \param[in] data данные.
- * \param[in] size размер данных.
- */
-typedef void onClientDataRx(uint32_t addr, uint16_t port, uint8_t *data, uint16_t size);
-#endif
-
 #ifdef CONFIG_WIFICHN_OTA
 typedef void onOtaProgress(uint16_t progress, int16_t status);
 typedef void onOtaImageDesc(esp_app_desc_t& desc);
 #endif
 
-/// @brief Тип клиента
-enum class CLIENT_TYPE
-{
-	None,
-#if CONFIG_WIFICHN_UDP
-	UDP, ///< UDP клиент.
-#endif
-#if CONFIG_WIFICHN_TCP
-	TCP	 ///< TCP клиент.
-#endif
-};
-
-#if CONFIG_WIFICHN_UDP
-class CUDPOut;
-class CUDPInTask;
-#endif
-#if CONFIG_WIFICHN_TCP
-class CTCPClientTask;
-#endif
 #if CONFIG_WIFICHN_OTA
 class COTATask;
 #endif
 
 class WiFiStation
 {
-#if CONFIG_WIFICHN_UDP
-	friend class CUDPInTask;
-#endif
-#if CONFIG_WIFICHN_TCP
-	friend class CTCPClientTask;
-#endif
 #if CONFIG_WIFICHN_OTA
 	friend class COTATask;
 #endif
@@ -109,23 +72,9 @@ protected:
 	onWiFiScan* mWiFiScanCallback = nullptr;
 	esp_netif_t *m_net_if;					   ///< esp_netif_object server
 
-	CLIENT_TYPE mClient = CLIENT_TYPE::None; ///< Тип клиента
 	uint32_t mSrcIP = 0;					///< IP адрес устройства.
 	bool mConnecting = false;				///< Флаг подключения.
 	bool mStopping = false;					///< Флаг остановки — блокирует event_handler от вызова esp_wifi_connect().
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-	uint32_t mDestIP = 0xffffffffL;			///< IP адрес сервера.
-	uint16_t mPort = 2013;					///< Порт для подключения к серверу
-	onClientDataRx *mClientDataRxCallback = nullptr; ///< Событие на прием данных от сервера.
-#endif
-
-#if CONFIG_WIFICHN_UDP
-	CUDPOut *mUdpOut = nullptr;			  ///< Указатель на UDP клиент.
-	CUDPInTask *mUdpIn = nullptr;		  ///< Указатель на UDP сервер.
-#endif
-#if CONFIG_WIFICHN_TCP
-	CTCPClientTask *mTcpClient = nullptr; ///< Указатель на TCP клиент.
-#endif
 
 #ifdef CONFIG_WIFICHN_OTA
 	COTATask* mOTA = nullptr;
@@ -190,24 +139,6 @@ public:
 	uint16_t initFromFile(const char *fileName);
 	/// Настройки WiFi из json.
 	uint16_t initFromJson(json& config);
-
-#if CONFIG_WIFICHN_TCP || CONFIG_WIFICHN_UDP
-	/// Запуск клиента
-	/*
-	* \param[in] clientDataRxCallback - Указатель на функцию обработки события приема данных от сервера.
-	* \return true - если подключение успешно, false - если не удалось подключиться.
-	*/
-	bool startClient(onClientDataRx *clientDataRxCallback);
-	/// Посылка данных
-	/*
-	* \param[in] data - Указатель на данные.
-	* \param[in] len - Длина данных.
-	* \return true - если успешно.
-	*/
-	void sendData(uint8_t *data, uint16_t len);
-	/// Остановка клиента
-	void stopClient();
-#endif
 
 #ifdef CONFIG_WIFICHN_OTA
 	bool startOta(onOtaProgress *otaProgressCallback, const char* file, onOtaImageDesc* otaImageDesc=nullptr);
