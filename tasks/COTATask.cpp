@@ -76,9 +76,17 @@ void COTATask::event_ota_handler(void *arg, esp_event_base_t event_base, int32_t
             // ESP_LOGW(TAG, "Boot partition updated. Next Partition: %d", *(esp_partition_subtype_t *)event_data);
             break;
         case ESP_HTTPS_OTA_FINISH:
+            if (ota->mParent->mOtaProgressCallback != nullptr)
+            {
+                 ota->mParent->mOtaProgressCallback(100, 0);
+            }
             // ESP_LOGI(TAG, "OTA finish");
             break;
         case ESP_HTTPS_OTA_ABORT:
+            if (ota->mParent->mOtaProgressCallback != nullptr)
+            {
+                ota->mParent->mOtaProgressCallback(ota->mProgress, -1);
+            }
             // ESP_LOGW(TAG, "OTA abort");
             break;
         }
@@ -88,13 +96,13 @@ void COTATask::event_ota_handler(void *arg, esp_event_base_t event_base, int32_t
 void COTATask::run()
 {
     // Временная диагностика TLS-рукопожатия при OTA.
-    esp_log_level_set("esp-tls", ESP_LOG_DEBUG);
-    esp_log_level_set("esp-tls-mbedtls", ESP_LOG_DEBUG);
-    esp_log_level_set("esp_https_ota", ESP_LOG_DEBUG);
-    esp_log_level_set("esp-x509-crt-bundle", ESP_LOG_DEBUG);
-    esp_log_level_set("HTTP_CLIENT", ESP_LOG_DEBUG);
-    esp_log_level_set("transport_base", ESP_LOG_DEBUG);
-    esp_log_level_set("transport", ESP_LOG_DEBUG);
+    // esp_log_level_set("esp-tls", ESP_LOG_DEBUG);
+    // esp_log_level_set("esp-tls-mbedtls", ESP_LOG_DEBUG);
+    // esp_log_level_set("esp_https_ota", ESP_LOG_DEBUG);
+    // esp_log_level_set("esp-x509-crt-bundle", ESP_LOG_DEBUG);
+    // esp_log_level_set("HTTP_CLIENT", ESP_LOG_DEBUG);
+    // esp_log_level_set("transport_base", ESP_LOG_DEBUG);
+    // esp_log_level_set("transport", ESP_LOG_DEBUG);
 
 #ifndef CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
     UBaseType_t m1 = uxTaskGetStackHighWaterMark2(nullptr);
@@ -105,6 +113,13 @@ void COTATask::run()
 	esp_pm_lock_acquire(mPMLock);
 #endif
 
+    // На время закачки отключаем WiFi power-save (по умолчанию WIFI_PS_MIN_MODEM):
+    // модемный сон добавляет задержку на каждый пакет (ожидание DTIM-интервала),
+    // что заметно тормозит именно передачу большого образа по HTTPS.
+    wifi_ps_type_t prevPsType = WIFI_PS_MIN_MODEM;
+    esp_wifi_get_ps(&prevPsType);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+
     esp_http_client_config_t cfgHTTPS;
     memset(&cfgHTTPS, 0, sizeof(cfgHTTPS));
     // cfgHTTPS.addr_type = HTTP_ADDR_TYPE_INET;
@@ -113,7 +128,11 @@ void COTATask::run()
     // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
     cfgHTTPS.crt_bundle_attach = esp_crt_bundle_attach;
     cfgHTTPS.buffer_size_tx = 2048;
+#if CONFIG_SPIRAM
+    cfgHTTPS.buffer_size = 16384; // с PSRAM можно позволить буфер побольше — меньше циклов чтения на закачку.
+#else
     cfgHTTPS.buffer_size = 4096;
+#endif
     cfgHTTPS.timeout_ms = 10000;
     esp_https_ota_config_t ota_config = {
         .http_config = &cfgHTTPS,
@@ -219,6 +238,9 @@ void COTATask::run()
     {
         mParent->mOtaProgressCallback(100, res);
     }
+
+    esp_wifi_set_ps(prevPsType);
+
 #if CONFIG_PM_ENABLE
 	esp_pm_lock_release(mPMLock);
 	esp_pm_lock_delete(mPMLock);
