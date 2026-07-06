@@ -48,6 +48,8 @@ static void onEvent(uint16_t id, const char *message)
 
 static void handleOtaProgress(uint16_t progress, int16_t status)
 {
+    if (status == 10)
+        ESP_LOGW(TAG, "OTA: sync time");;
     // status 2/3 = COTATask connected to the server and is writing the image (see COTATask::event_ota_handler).
     if (status == 2 || status == 3)
         s_reached_server = true;
@@ -58,7 +60,7 @@ static void handleOtaProgress(uint16_t progress, int16_t status)
         ESP_LOGI(TAG, "OTA: %d%%", progress);
     }
     // The final call from COTATask::run() always uses progress==100.
-    if ((status == 0) || (status == -1))
+    if ((status == 4) || (status == -1))
         s_final_status = status;
 }
 
@@ -115,7 +117,7 @@ TEST_CASE("WiFiStation wifi_ota connect", "[wifi_chn]")
     {
         TEST_FAIL_MESSAGE("COTATask did not finish OTA within the allotted time");
     }
-    else if (s_final_status != 0)
+    else if (s_final_status != 4)
     {
         char msg[96];
         snprintf(msg, sizeof(msg), "OTA finished with an error, status=%d (reached_server=%d)",

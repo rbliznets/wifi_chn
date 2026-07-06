@@ -231,6 +231,19 @@ bool WiFiStation::stop()
         esp_event_loop_delete_default();
         esp_netif_deinit();
 
+#if (CONFIG_WIFICHN_SYNC_TIME == 1)
+        // Если синхронизация времени не успела завершиться (time_sync_notification_cb
+        // не вызывался), esp_netif_sntp остаётся инициализированным. Без этого деинита
+        // повторный WiFiStation::start() в той же сессии получит от
+        // esp_netif_sntp_init() ESP_ERR_INVALID_STATE (см. esp_netif_sntp.c) - ошибку,
+        // которая нигде не проверяется, поэтому новая синхронизация молча не запустится.
+        if (mStartSyncTime)
+        {
+            esp_netif_sntp_deinit();
+            mStartSyncTime = false;
+        }
+#endif
+
         mStopping = false;
     }
     else

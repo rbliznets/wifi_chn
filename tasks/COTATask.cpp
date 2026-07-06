@@ -78,7 +78,7 @@ void COTATask::event_ota_handler(void *arg, esp_event_base_t event_base, int32_t
         case ESP_HTTPS_OTA_FINISH:
             if (ota->mParent->mOtaProgressCallback != nullptr)
             {
-                 ota->mParent->mOtaProgressCallback(100, 0);
+                ota->mParent->mOtaProgressCallback(100, 4);
             }
             // ESP_LOGI(TAG, "OTA finish");
             break;
@@ -108,9 +108,9 @@ void COTATask::run()
     UBaseType_t m1 = uxTaskGetStackHighWaterMark2(nullptr);
 #endif
 #if CONFIG_PM_ENABLE
-	esp_pm_lock_handle_t mPMLock; ///< флаг запрета на понижение частоты CPU
-	esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "ota", &mPMLock);
-	esp_pm_lock_acquire(mPMLock);
+    esp_pm_lock_handle_t mPMLock; ///< флаг запрета на понижение частоты CPU
+    esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "ota", &mPMLock);
+    esp_pm_lock_acquire(mPMLock);
 #endif
 
     // На время закачки отключаем WiFi power-save (по умолчанию WIFI_PS_MIN_MODEM):
@@ -148,58 +148,88 @@ void COTATask::run()
         .ota_resumption = false,
     };
 
-    if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
-    {
-        // Проверка TLS-сертификата сервера требует верного системного времени,
-        // поэтому ждём завершения NTP-синхронизации по WiFi (WiFiStation::mStartSyncTime),
-        // запущенной при подключении, прежде чем начинать HTTPS OTA.
-        ESP_LOGI(TAG, "Waiting for time sync before HTTPS OTA");
-        while (mParent->mStartSyncTime && !mCancel)
-            vTaskDelay(pdMS_TO_TICKS(200));
-    }
+    // if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
+    // {
+    //     // Проверка TLS-сертификата сервера требует верного системного времени,
+    //     // поэтому ждём завершения NTP-синхронизации по WiFi (WiFiStation::mStartSyncTime),
+    //     // запущенной при подключении, прежде чем начинать HTTPS OTA.
+    //     // ESP_LOGI(TAG, "Waiting for time sync before HTTPS OTA");
+    //     uint16_t cnt = 5;
+    //     while (mParent->mStartSyncTime && !mCancel)
+    //     {
+    //         if(cnt == 5)
+    //         {
+    //             if (mParent->mOtaProgressCallback != nullptr)
+    //                 mParent->mOtaProgressCallback(0, 10);
+    //             cnt = 0;
+    //         }
+    //         vTaskDelay(pdMS_TO_TICKS(200));
+    //         cnt++;
+    //     }
+    // }
 
     int16_t res = 0;
     if (mCancel)
         res = 100;
     else
-    while (true)
-    {
-        if (ESP_OK != esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, this))
-        {
-            res = 101;
-            break;
-        }
-
-        esp_https_ota_handle_t https_ota_handle;
-        esp_err_t begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
-        if (ESP_OK != begin_err)
-        {
-            ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(begin_err));
-            res = 102;
-            break;
-        }
-
-        mImageSize = esp_https_ota_get_image_size(https_ota_handle);
-        if (mImageSize < 0)
-        {
-            res = 112;
-            break;
-        }
-
-        if (mParent->mOtaImageDesc != nullptr)
-        {
-            esp_app_desc_t desc;
-            if (ESP_OK != esp_https_ota_get_img_desc(https_ota_handle, &desc))
-            {
-                res = 113;
-                break;
-            }
-            mParent->mOtaImageDesc(desc);
-            // ESP_LOGI(TAG, "%s,%s,%s,%s",desc.project_name,desc.version,desc.date,desc.time);
-        }
-
         while (true)
         {
+            if (ESP_OK != esp_event_handler_register(ESP_HTTPS_OTA_EVENT, ESP_EVENT_ANY_ID, &event_ota_handler, this))
+            {
+                res = 101;
+                break;
+            }
+
+            esp_https_ota_handle_t https_ota_handle;
+            esp_err_t begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+            if (ESP_OK != begin_err)
+            {
+                ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(begin_err));
+                res = 102;
+                break;
+            }
+
+            mImageSize = esp_https_ota_get_image_size(https_ota_handle);
+            if (mImageSize < 0)
+            {
+                res = 112;
+                break;
+            }
+
+            if (mParent->mOtaImageDesc != nullptr)
+            {
+                esp_app_desc_t desc;
+                if (ESP_OK != esp_https_ota_get_img_desc(https_ota_handle, &desc))
+                {
+                    res = 113;
+                    break;
+                }
+                mParent->mOtaImageDesc(desc);
+                // ESP_LOGI(TAG, "%s,%s,%s,%s",desc.project_name,desc.version,desc.date,desc.time);
+            }
+
+            while (true)
+            {
+                if (mCancel)
+                {
+                    res = 100;
+                    esp_https_ota_abort(https_ota_handle);
+                    break;
+                }
+
+                esp_err_t err = esp_https_ota_perform(https_ota_handle);
+                if (ESP_OK == err)
+                    break;
+                if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)
+                {
+                    res = 103;
+                    esp_https_ota_abort(https_ota_handle);
+                    break;
+                }
+            }
+            if (res != 0)
+                break;
+
             if (mCancel)
             {
                 res = 100;
@@ -207,33 +237,13 @@ void COTATask::run()
                 break;
             }
 
-            esp_err_t err = esp_https_ota_perform(https_ota_handle);
-            if (ESP_OK == err)
-                break;
-            if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)
+            if (ESP_OK != esp_https_ota_finish(https_ota_handle))
             {
-                res = 103;
-                esp_https_ota_abort(https_ota_handle);
-                break;
+                res = 104;
             }
-        }
-        if (res != 0)
-            break;
 
-        if (mCancel)
-        {
-            res = 100;
-            esp_https_ota_abort(https_ota_handle);
             break;
         }
-
-        if (ESP_OK != esp_https_ota_finish(https_ota_handle))
-        {
-            res = 104;
-        }
-
-        break;
-    }
     if (mParent->mOtaProgressCallback != nullptr)
     {
         mParent->mOtaProgressCallback(100, res);
@@ -242,8 +252,8 @@ void COTATask::run()
     esp_wifi_set_ps(prevPsType);
 
 #if CONFIG_PM_ENABLE
-	esp_pm_lock_release(mPMLock);
-	esp_pm_lock_delete(mPMLock);
+    esp_pm_lock_release(mPMLock);
+    esp_pm_lock_delete(mPMLock);
 #endif
 
 #ifndef CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
