@@ -181,10 +181,27 @@ void COTATask::run()
             }
 
             esp_https_ota_handle_t https_ota_handle;
-            esp_err_t begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+            esp_err_t begin_err;
+            // Обрыв связи на этом этапе (до записи во флеш) не фатален - это ещё не начало
+            // закачки, а лишь установка HTTPS-соединения. Точки доступа вроде мобильных
+            // хотспотов иногда на несколько минут теряют исходящую связность, поэтому
+            // повторяем попытку вместо немедленного отказа.
+            for (uint8_t attempt = 0; attempt < OTATASK_BEGIN_RETRIES; attempt++)
+            {
+                begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+                if (ESP_OK == begin_err || mCancel)
+                    break;
+                ESP_LOGW(TAG, "esp_https_ota_begin failed: %s (attempt %d/%d)", esp_err_to_name(begin_err), attempt + 1, OTATASK_BEGIN_RETRIES);
+                vTaskDelay(pdMS_TO_TICKS(OTATASK_RETRY_DELAY_MS));
+            }
+            if (mCancel)
+            {
+                res = 100;
+                break;
+            }
             if (ESP_OK != begin_err)
             {
-                ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(begin_err));
+                ESP_LOGE(TAG, "esp_https_ota_begin failed after %d attempts: %s", OTATASK_BEGIN_RETRIES, esp_err_to_name(begin_err));
                 res = 102;
                 break;
             }
