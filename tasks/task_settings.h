@@ -31,7 +31,7 @@
  * Параметры задач
  */
 #define OTATASK_NAME "ota"				   ///< Имя задачи для отладки.
-#define OTATASK_STACKSIZE (4 * 1024 + 512 + 128) ///< Размер стека задачи.
+#define OTATASK_STACKSIZE (5 * 1024) ///< Размер стека задачи.
 #define OTATASK_PRIOR (1)				   ///< Приоритет задачи.
 #define OTATASK_LENGTH (1)				   ///< Длина приемной очереди задачи.
 #define OTATASK_CPU CPU_CORE					   ///< Номер ядра процессора.
