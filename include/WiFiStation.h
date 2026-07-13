@@ -14,8 +14,7 @@
 #include <cstring>
 
 #include <fstream>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
+#include "CJsonType.h"
 #include <filesystem>
 
 #ifdef CONFIG_WIFICHN_OTA

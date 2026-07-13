@@ -128,11 +128,12 @@ void COTATask::run()
     // cfgHTTPS.cert_pem = (char *)server_cert_pem_start;
     cfgHTTPS.crt_bundle_attach = esp_crt_bundle_attach;
     cfgHTTPS.buffer_size_tx = 2048;
-#if CONFIG_SPIRAM
-    cfgHTTPS.buffer_size = 16384; // с PSRAM можно позволить буфер побольше — меньше циклов чтения на закачку.
-#else
-    cfgHTTPS.buffer_size = 4096;
-#endif
+    // Эти буферы esp_http_client создаёт обычным malloc() (esp_http_client.c),
+    // без capability-флагов, поэтому при CONFIG_SPIRAM_USE_CAPS_ALLOC (как в этом проекте)
+    // они всегда уходят во внутреннюю RAM, а не в PSRAM. От PSRAM зависит только
+    // ota_config.buffer_caps ниже — им реально пользуется отдельный внутренний
+    // буфер esp_https_ota (ota_upgrade_buf), а не эти поля esp_http_client_config_t.
+    cfgHTTPS.buffer_size = 4096; // больше буфер — меньше циклов чтения на закачку.
     cfgHTTPS.timeout_ms = 10000;
     esp_https_ota_config_t ota_config = {
         .http_config = &cfgHTTPS,
@@ -186,6 +187,7 @@ void COTATask::run()
             // закачки, а лишь установка HTTPS-соединения. Точки доступа вроде мобильных
             // хотспотов иногда на несколько минут теряют исходящую связность, поэтому
             // повторяем попытку вместо немедленного отказа.
+				// ESP_LOGW(TAG,"(12)free mem %d(%d)",esp_get_free_internal_heap_size(),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
             for (uint8_t attempt = 0; attempt < OTATASK_BEGIN_RETRIES; attempt++)
             {
                 begin_err = esp_https_ota_begin(&ota_config, &https_ota_handle);
@@ -206,6 +208,7 @@ void COTATask::run()
                 break;
             }
 
+				// ESP_LOGW(TAG,"(13)free mem %d(%d)",esp_get_free_internal_heap_size(),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
             mImageSize = esp_https_ota_get_image_size(https_ota_handle);
             if (mImageSize < 0)
             {
