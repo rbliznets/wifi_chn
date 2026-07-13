@@ -19,7 +19,7 @@ static const char *TAG = "ota";
 
 COTATask::COTATask(WiFiStation *parent, const char *file) : CBaseTask(), mParent(parent), mPath(file)
 {
-    CBaseTask::init(OTATASK_NAME, OTATASK_STACKSIZE, OTATASK_PRIOR, OTATASK_LENGTH, OTATASK_CPU);
+    CBaseTask::init(OTATASK_NAME, OTATASK_STACKSIZE, OTATASK_PRIOR, OTATASK_LENGTH, OTATASK_CPU, OTATASK_PSRAM);
 }
 
 COTATask::~COTATask()

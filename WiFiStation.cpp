@@ -18,6 +18,174 @@
 
 static const char *TAG = "wifi";
 
+// // ===== ВРЕМЕННАЯ ОТЛАДКА ПОРЧИ КУЧИ =====
+// // По дампам падений слово ~0x3fcc80b0 (бывшая память аудио, переиспользуемая
+// // структурами WiFi-сессии) затирается значениями 0x18 / 0xc03403c0 (похоже на
+// // слова GDMA-дескриптора). Захватываем этот участок канареечным блоком до
+// // инициализации WiFi и ставим на него watchpoint на запись (оба ядра) +
+// // периодический опрос. CPU-писатель даст Debug exception с backtrace виновника;
+// // если сработает только опрос - пишет DMA.
+// #include "esp_cpu.h"
+// #include "esp_ipc.h"
+// #include "esp_timer.h"
+// #include "esp_system.h"
+
+// // Область, в которую попадали дикие записи (по дампам): 0x3fcc7f94, 0x3fcc80b0..c4.
+// // Цель писателя плавает вместе с раскладкой, поэтому распыляем канарейки по всей
+// // зоне и при попадании перевешиваем watchpoint на адрес попадания: писатель
+// // повторяет запись каждую WiFi-сессию, следующая даст Debug exception с его PC.
+// static constexpr uintptr_t kDbgZoneLo = 0x3fcc7000;
+// static constexpr uintptr_t kDbgZoneHi = 0x3fcca000;
+// static constexpr uint8_t kDbgFill = 0xA5;
+// static constexpr size_t kDbgBlk = 64;
+// static constexpr int kDbgMaxBlk = 200;
+
+// static uint8_t *sDbgBlocks[kDbgMaxBlk];
+// static int sDbgBlockCount = 0;
+// static esp_timer_handle_t sDbgPollTimer = nullptr;
+// static volatile uintptr_t sDbgWpAddr = 0;
+
+// static void dbg_wp_arm(void *)
+// {
+//     // 32 байта, выравнивание по 32.
+//     // Индекс 0 свободен: CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK занимает последний.
+//     esp_cpu_set_watchpoint(0, (void *)(sDbgWpAddr & ~(uintptr_t)31), 32, ESP_CPU_WATCHPOINT_STORE);
+// }
+
+// // Цель писателя стабильна между загрузками с включённым BT: записи u32=24 по
+// // 0x3fcc8114 и u8=8 по 0x3fcc8118 (две загрузки подряд). Ставим watchpoint прямо
+// // на неё на время WiFi-сессии: легитимные записи туда - только alloc/free
+// // аллокатора (отличимы по backtrace), настоящий писатель попадётся с точным PC.
+// static constexpr uintptr_t kDbgHardTarget = 0x3fcc8114;
+
+// static uint8_t *sDbgHitBlock = nullptr; // блок, в который попал stale free/запись
+// static volatile bool sDbgReleasing = false;
+// static volatile uintptr_t sDbgBaitLo = ~(uintptr_t)0, sDbgBaitHi = 0;
+
+// #include "esp_debug_helpers.h"
+// // Hook вызывается в начале КАЖДОГО heap_caps_free - в контексте вызвавшего.
+// // free() по адресу удерживаемого нами блока-приманки = заведомо stale free:
+// // печатаем backtrace виновника и останавливаемся.
+// extern "C" void esp_heap_trace_free_hook(void *ptr)
+// {
+//     if (sDbgReleasing || sDbgBlockCount == 0)
+//         return;
+//     uintptr_t p = (uintptr_t)ptr;
+//     if (p < sDbgBaitLo || p > sDbgBaitHi)
+//         return;
+//     for (int i = 0; i < sDbgBlockCount; ++i)
+//     {
+//         if (sDbgBlocks[i] == (uint8_t *)ptr)
+//         {
+//             esp_rom_printf("\nSTALE FREE of bait %p! Culprit backtrace:\n", ptr);
+//             esp_backtrace_print(20);
+//             esp_system_abort("stale free caught");
+//         }
+//     }
+// }
+
+// static void dbg_poll(void *)
+// {
+//     for (int b = 0; b < sDbgBlockCount; ++b)
+//     {
+//         uint32_t *w = (uint32_t *)sDbgBlocks[b];
+//         if ((uint8_t *)w == sDbgHitBlock)
+//             continue; // блок-жертву сторожит watchpoint, опрос не нужен
+//         for (size_t i = 0; i < kDbgBlk / 4; ++i)
+//         {
+//             if (w[i] != 0xA5A5A5A5)
+//             {
+//                 ESP_LOGE(TAG, "CANARY HIT %p: %08lx %08lx %08lx %08lx", &w[i],
+//                          w[i], w[i + 1], w[i + 2], w[i + 3]);
+//                 // Блок-жертву держим навсегда и вешаем на него watchpoint:
+//                 // виновник повторяет free/запись по этому адресу каждую WiFi-сессию,
+//                 // следующее обращение даст Debug exception с его backtrace.
+//                 std::memset(w, kDbgFill, kDbgBlk);
+//                 sDbgHitBlock = (uint8_t *)w;
+//                 sDbgWpAddr = (uintptr_t)&w[i];
+//                 esp_ipc_call_blocking(0, dbg_wp_arm, nullptr);
+//                 esp_ipc_call_blocking(1, dbg_wp_arm, nullptr);
+//                 ESP_LOGE(TAG, "wp armed @%p (block %p held)", (void *)(sDbgWpAddr & ~(uintptr_t)31), w);
+//                 return;
+//             }
+//         }
+//     }
+// }
+
+// static void dbg_canary_arm()
+// {
+//     // Виновник найден (гонка CSoftwareTimer, см. CSoftwareTimer.cpp) - приманки
+//     // отключены: они фрагментировали кучу и мешали пересозданию аудио (27КБ стек).
+//     return;
+//     if (sDbgBlockCount != 0)
+//         return;
+//     // Распыляем блоки по зоне: держим те, что попали в [kDbgZoneLo,kDbgZoneHi).
+//     // Аллокации TLSF не упорядочены по адресам, поэтому не прерываемся рано.
+//     static void *drop[600];
+//     int nd = 0;
+//     while (sDbgBlockCount < kDbgMaxBlk && nd < 600)
+//     {
+//         uint8_t *p = (uint8_t *)heap_caps_malloc(kDbgBlk, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+//         if (p == nullptr)
+//             break;
+//         // Берём любые блоки: TLSF отдаёт свежеосвобождённую (аудио) память первой -
+//         // именно там живут цели stale-указателей.
+//         std::memset(p, kDbgFill, kDbgBlk);
+//         sDbgBlocks[sDbgBlockCount++] = p;
+//         if ((uintptr_t)p < sDbgBaitLo)
+//             sDbgBaitLo = (uintptr_t)p;
+//         if ((uintptr_t)p > sDbgBaitHi)
+//             sDbgBaitHi = (uintptr_t)p;
+//         (void)drop;
+//         (void)nd;
+//     }
+//     for (int i = 0; i < nd; ++i)
+//         heap_caps_free(drop[i]);
+//     if (sDbgBlockCount > 0)
+//     {
+//         if (sDbgPollTimer == nullptr)
+//         {
+//             const esp_timer_create_args_t cfg = {
+//                 .callback = dbg_poll, .arg = nullptr, .dispatch_method = ESP_TIMER_TASK, .name = "wifidbg", .skip_unhandled_events = true};
+//             esp_timer_create(&cfg, &sDbgPollTimer);
+//             esp_timer_start_periodic(sDbgPollTimer, 10000); // 10 мс
+//         }
+//         ESP_LOGW(TAG, "dbg spray: %d blk, %p..%p", sDbgBlockCount,
+//                  sDbgBlocks[0], sDbgBlocks[sDbgBlockCount - 1] + kDbgBlk);
+//     }
+//     else
+//     {
+//         ESP_LOGW(TAG, "dbg spray: zone busy, not armed");
+//     }
+// }
+
+// static void dbg_wp_clear(void *)
+// {
+//     esp_cpu_clear_watchpoint(0);
+// }
+
+// // Освобождаем спрей в конце WiFi-сессии, чтобы не спровоцировать нехватку
+// // внутренней памяти при пересоздании аудио (стек голосовой задачи 27КБ).
+// // Блок-жертва (sDbgHitBlock) не освобождается: его сторожит watchpoint,
+// // и виновник придёт по этому адресу снова в следующей сессии.
+// static void dbg_canary_release()
+// {
+//     if (sDbgBlockCount == 0)
+//         return;
+//     if (sDbgPollTimer != nullptr)
+//         esp_timer_stop(sDbgPollTimer); // остановить опрос до освобождения (иначе гонка с re-arm)
+//     sDbgReleasing = true;
+//     for (int i = 0; i < sDbgBlockCount; ++i)
+//         if (sDbgBlocks[i] != sDbgHitBlock)
+//             heap_caps_free(sDbgBlocks[i]);
+//     sDbgBlockCount = 0;
+//     sDbgBaitLo = ~(uintptr_t)0;
+//     sDbgBaitHi = 0;
+//     sDbgReleasing = false;
+//     ESP_LOGW(TAG, "dbg spray released%s", (sDbgHitBlock != nullptr) ? " (hit block held, wp armed)" : "");
+// }
+// // ===== КОНЕЦ ВРЕМЕННОЙ ОТЛАДКИ =====
+
 WiFiStation *WiFiStation::theSingleInstance = nullptr;
 
 WiFiStation::WiFiStation()
@@ -124,6 +292,8 @@ bool WiFiStation::stopOta()
 
 bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallback, const char *ssid, const char *password)
 {
+    // ВРЕМЕННАЯ ОТЛАДКА: в STA/OTA-фазе приманки не взводим (порча происходит в фазе
+    // скана, а во время TLS-хендшейка каждый килобайт внутренней кучи на счету).
     mConnectCallback = connectCallback;
     mEventCallback = eventCallback;
     if (ssid != nullptr)
@@ -135,8 +305,10 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
 
     ESP_LOGI(TAG, "%s %s", m_wifi_config.sta.ssid, m_wifi_config.sta.password);
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // netif и default event loop создаются один раз при старте приложения (main.cpp)
+    // и не удаляются: повторные вызовы вернут ESP_ERR_INVALID_STATE - это норма.
+    esp_netif_init();
+    esp_event_loop_create_default();
 #if (CONFIG_WIFICHN_SYNC_TIME == 1) && (CONFIG_LWIP_DHCP_GET_NTP_SRV == 1)
     if (!CDateTimeSystem::isSync())
     {
@@ -175,9 +347,10 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
 
 bool WiFiStation::startScan(onWiFiScan *scanCallback)
 {
+    // dbg_canary_arm(); // ВРЕМЕННАЯ ОТЛАДКА: захватить область порчи до инициализации WiFi
     mWiFiScanCallback = scanCallback;
 
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_event_loop_create_default(); // создан в main.cpp; ESP_ERR_INVALID_STATE - норма
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
@@ -228,8 +401,9 @@ bool WiFiStation::stop()
 
         esp_wifi_deinit();
         esp_netif_destroy_default_wifi(m_net_if);
-        esp_event_loop_delete_default();
-        esp_netif_deinit();
+        // default event loop и esp_netif живут весь аптайм (созданы в main.cpp):
+        // их удаление здесь гонялось с отложенными esp_event_post из WiFi-драйвера
+        // (ppTask/таймеры ядра 1) и оставляло висячие регистрации.
 
 #if (CONFIG_WIFICHN_SYNC_TIME == 1)
         // Если синхронизация времени не успела завершиться (time_sync_notification_cb
@@ -251,8 +425,9 @@ bool WiFiStation::stop()
         esp_wifi_stop();
         esp_wifi_deinit();
         esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_SCAN_DONE, &event_handler);
-        esp_event_loop_delete_default();
+        // default event loop не удаляем (см. комментарий выше)
     }
+    // dbg_canary_release(); // ВРЕМЕННАЯ ОТЛАДКА: вернуть память до пересоздания аудио
     return true;
 }
 

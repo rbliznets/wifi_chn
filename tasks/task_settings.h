@@ -35,5 +35,7 @@
 #define OTATASK_PRIOR (1)				   ///< Приоритет задачи.
 #define OTATASK_LENGTH (1)				   ///< Длина приемной очереди задачи.
 #define OTATASK_CPU CPU_CORE					   ///< Номер ядра процессора.
+#define OTATASK_PSRAM false
+
 #define OTATASK_BEGIN_RETRIES (1)			   ///< Число попыток esp_https_ota_begin() при обрыве связи.
 #define OTATASK_RETRY_DELAY_MS (1000)		   ///< Пауза между попытками esp_https_ota_begin().
