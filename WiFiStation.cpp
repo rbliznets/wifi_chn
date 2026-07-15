@@ -324,7 +324,7 @@ bool WiFiStation::start(onWiFiConnect *connectCallback, onWiFiEvent *eventCallba
     }
 #endif
     m_net_if = esp_netif_create_default_wifi_sta();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
@@ -350,8 +350,8 @@ bool WiFiStation::startScan(onWiFiScan *scanCallback)
     // dbg_canary_arm(); // ВРЕМЕННАЯ ОТЛАДКА: захватить область порчи до инициализации WiFi
     mWiFiScanCallback = scanCallback;
 
-    esp_event_loop_create_default(); // создан в main.cpp; ESP_ERR_INVALID_STATE - норма
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_event_loop_create_default(); 
+    // wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         WIFI_EVENT_SCAN_DONE,
@@ -399,8 +399,6 @@ bool WiFiStation::stop()
         esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler);
         esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler);
 
-        esp_wifi_deinit();
-        esp_netif_destroy_default_wifi(m_net_if);
         // default event loop и esp_netif живут весь аптайм (созданы в main.cpp):
         // их удаление здесь гонялось с отложенными esp_event_post из WiFi-драйвера
         // (ppTask/таймеры ядра 1) и оставляло висячие регистрации.
@@ -417,6 +415,8 @@ bool WiFiStation::stop()
             mStartSyncTime = false;
         }
 #endif
+        esp_wifi_deinit();
+        esp_netif_destroy_default_wifi(m_net_if);
 
         mStopping = false;
     }
@@ -427,7 +427,8 @@ bool WiFiStation::stop()
         esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_SCAN_DONE, &event_handler);
         // default event loop не удаляем (см. комментарий выше)
     }
-    // dbg_canary_release(); // ВРЕМЕННАЯ ОТЛАДКА: вернуть память до пересоздания аудио
+    esp_event_loop_delete_default();
+      // dbg_canary_release(); // ВРЕМЕННАЯ ОТЛАДКА: вернуть память до пересоздания аудио
     return true;
 }
 

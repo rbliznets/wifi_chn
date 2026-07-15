@@ -62,6 +62,7 @@ protected:
 #endif
 
 	wifi_config_t m_wifi_config; ///< Структура WiFi конфигурации.
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
 	/// Callback функция для обработки событий WiFi.
 	static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);

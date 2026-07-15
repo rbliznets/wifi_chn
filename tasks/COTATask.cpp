@@ -149,25 +149,27 @@ void COTATask::run()
         .ota_resumption = false,
     };
 
-    // if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
-    // {
-    //     // Проверка TLS-сертификата сервера требует верного системного времени,
-    //     // поэтому ждём завершения NTP-синхронизации по WiFi (WiFiStation::mStartSyncTime),
-    //     // запущенной при подключении, прежде чем начинать HTTPS OTA.
-    //     // ESP_LOGI(TAG, "Waiting for time sync before HTTPS OTA");
-    //     uint16_t cnt = 5;
-    //     while (mParent->mStartSyncTime && !mCancel)
-    //     {
-    //         if(cnt == 5)
-    //         {
-    //             if (mParent->mOtaProgressCallback != nullptr)
-    //                 mParent->mOtaProgressCallback(0, 10);
-    //             cnt = 0;
-    //         }
-    //         vTaskDelay(pdMS_TO_TICKS(200));
-    //         cnt++;
-    //     }
-    // }
+#ifdef CONFIG_WIFICHN_SYNC_TIME
+    if (!CDateTimeSystem::isSync() && mParent->mStartSyncTime)
+    {
+        // Проверка TLS-сертификата сервера требует верного системного времени,
+        // поэтому ждём завершения NTP-синхронизации по WiFi (WiFiStation::mStartSyncTime),
+        // запущенной при подключении, прежде чем начинать HTTPS OTA.
+        // ESP_LOGI(TAG, "Waiting for time sync before HTTPS OTA");
+        uint16_t cnt = 5;
+        while (mParent->mStartSyncTime && !mCancel)
+        {
+            if(cnt == 5)
+            {
+                if (mParent->mOtaProgressCallback != nullptr)
+                    mParent->mOtaProgressCallback(0, 10);
+                cnt = 0;
+            }
+            vTaskDelay(pdMS_TO_TICKS(200));
+            cnt++;
+        }
+    }
+#endif 
 
     int16_t res = 0;
     if (mCancel)
