@@ -242,6 +242,7 @@ void COTATask::run()
                 WiFiStation::writeEvent(true); // приостановить радио на время чтения/записи очередного блока
                 esp_err_t err = esp_https_ota_perform(https_ota_handle);
                 WiFiStation::writeEvent(false);
+                vTaskDelay(pdMS_TO_TICKS(10));
                 if (ESP_OK == err)
                     break;
                 if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)
