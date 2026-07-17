@@ -262,6 +262,30 @@ void WiFiStation::event_handler(void *arg, esp_event_base_t event_base, int32_t 
 }
 
 #ifdef CONFIG_WIFICHN_OTA
+std::list<onWriteEvent *> WiFiStation::mWriteQueue; ///< Очередь обработчиков события записи HTTPS OTA во flash
+
+// Вызвать все обработчики из очереди
+void WiFiStation::writeEvent(bool lock)
+{
+    for (auto const &event : mWriteQueue)
+    {
+        event(lock);
+    }
+}
+
+// Добавить обработчик события записи HTTPS OTA
+void WiFiStation::addWriteEvent(onWriteEvent *event)
+{
+    mWriteQueue.push_back(event);
+}
+
+// Удалить обработчик события записи HTTPS OTA
+void WiFiStation::removeWriteEvent(onWriteEvent *event)
+{
+    std::erase_if(mWriteQueue, [event](const auto &item)
+                  { return item == event; });
+}
+
 bool WiFiStation::startOta(onOtaProgress *otaProgressCallback, const char *file, onOtaImageDesc *otaImageDesc)
 {
     if (mOTA == nullptr)

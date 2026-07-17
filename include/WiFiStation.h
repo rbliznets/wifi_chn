@@ -19,6 +19,8 @@
 
 #ifdef CONFIG_WIFICHN_OTA
 #include "esp_app_desc.h"
+#include "CWriteEvent.h"
+#include <list>
 #endif
 
 
@@ -81,6 +83,12 @@ protected:
 
 	onOtaProgress *mOtaProgressCallback = nullptr;
 	onOtaImageDesc *mOtaImageDesc = nullptr;
+
+	/// Очередь обработчиков события записи HTTPS OTA во flash (используется для приостановки радио на время закачки)
+	static std::list<onWriteEvent *> mWriteQueue;
+	/// @brief Вызвать все обработчики из очереди
+	/// @param lock true - начало записи очередного блока, false - конец
+	static void writeEvent(bool lock);
 #endif
 
 	/// Конструктор.
@@ -143,6 +151,13 @@ public:
 #ifdef CONFIG_WIFICHN_OTA
 	bool startOta(onOtaProgress *otaProgressCallback, const char* file, onOtaImageDesc* otaImageDesc=nullptr);
 	bool stopOta();
-	
+
+	/// @brief Добавить обработчик события записи HTTPS OTA (вызывается при начале/конце записи очередного блока во flash)
+	/// @param event Указатель на функцию-обработчик
+	static void addWriteEvent(onWriteEvent *event);
+
+	/// @brief Удалить обработчик события записи HTTPS OTA
+	/// @param event Указатель на функцию-обработчик
+	static void removeWriteEvent(onWriteEvent *event);
 #endif
 };

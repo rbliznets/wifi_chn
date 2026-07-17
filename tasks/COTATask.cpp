@@ -239,7 +239,9 @@ void COTATask::run()
                     break;
                 }
 
+                WiFiStation::writeEvent(true); // приостановить радио на время чтения/записи очередного блока
                 esp_err_t err = esp_https_ota_perform(https_ota_handle);
+                WiFiStation::writeEvent(false);
                 if (ESP_OK == err)
                     break;
                 if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)
@@ -259,7 +261,10 @@ void COTATask::run()
                 break;
             }
 
-            if (ESP_OK != esp_https_ota_finish(https_ota_handle))
+            WiFiStation::writeEvent(true); // приостановить радио на время завершающей записи (esp_ota_end/set_boot_partition)
+            esp_err_t finish_err = esp_https_ota_finish(https_ota_handle);
+            WiFiStation::writeEvent(false);
+            if (ESP_OK != finish_err)
             {
                 res = 104;
             }
